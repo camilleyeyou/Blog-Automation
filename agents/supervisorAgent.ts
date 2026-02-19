@@ -1,4 +1,4 @@
-import { runContentAgent, type ContentDraft } from "./contentAgent";
+import { runContentAgent } from "./contentAgent";
 import { runRevisionAgent, type RevisionResult } from "./revisionAgent";
 import { runImageAgent } from "./imageAgent";
 import { createPost } from "@/services/blogApi";
@@ -143,12 +143,23 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
     } catch (err) {
       lastError = err;
       if (attempt <= MAX_RETRIES) {
-        // brief back-off before retry
-        await sleep(1000 * attempt);
+        // Respect Gemini's retryDelay from 429 responses; fall back to exponential back-off
+        const delay = parseRetryDelay(err) ?? 1000 * attempt;
+        await sleep(delay);
       }
     }
   }
   throw lastError;
+}
+
+/**
+ * Parse the retryDelay hint embedded in Gemini 429 error messages, e.g.:
+ *   [{"@type":"...RetryInfo","retryDelay":"23s"}]
+ */
+function parseRetryDelay(err: unknown): number | null {
+  if (!(err instanceof Error)) return null;
+  const match = /"retryDelay"\s*:\s*"(\d+)s"/.exec(err.message);
+  return match ? Number(match[1]) * 1000 : null;
 }
 
 function sleep(ms: number): Promise<void> {
