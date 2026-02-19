@@ -9,31 +9,33 @@ type Status =
   | "error";
 
 const styles: Record<Status, string> = {
-  pending: "bg-beige text-charcoal",
-  in_progress: "bg-blue-100 text-blue-800",
-  published: "bg-green-100 text-green-800",
-  success: "bg-green-100 text-green-800",
-  draft: "bg-yellow-100 text-yellow-800",
-  held: "bg-orange-100 text-orange-800",
-  discarded: "bg-stone/30 text-charcoal/50",
-  error: "bg-red-100 text-red-800",
+  pending:     "bg-stone/10 text-charcoal ring-stone/20",
+  in_progress: "bg-blue-50 text-blue-700 ring-blue-200",
+  published:   "bg-emerald-50 text-emerald-700 ring-emerald-200",
+  success:     "bg-emerald-50 text-emerald-700 ring-emerald-200",
+  draft:       "bg-amber-50 text-amber-700 ring-amber-200",
+  held:        "bg-orange-50 text-orange-700 ring-orange-200",
+  discarded:   "bg-beige text-stone ring-beige",
+  error:       "bg-red-50 text-red-600 ring-red-200",
 };
 
 const labels: Record<Status, string> = {
-  pending: "Pending",
-  in_progress: "In Progress",
-  published: "Published",
-  success: "Published",
-  draft: "Draft",
-  held: "Held",
-  discarded: "Discarded",
-  error: "Error",
+  pending:     "Pending",
+  in_progress: "Running",
+  published:   "Published",
+  success:     "Published",
+  draft:       "Draft",
+  held:        "Held",
+  discarded:   "Discarded",
+  error:       "Error",
 };
 
 export function StatusBadge({ status }: { status: Status }) {
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${styles[status] ?? "bg-beige text-charcoal"}`}
+      className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ring-1 ${
+        styles[status] ?? "bg-beige text-charcoal ring-beige"
+      }`}
     >
       {labels[status] ?? status}
     </span>

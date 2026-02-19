@@ -15,7 +15,7 @@ export async function runImageAgent(
   const prompt = buildImagePrompt(title, excerpt);
 
   const model = genAI.getGenerativeModel({
-    model: "gemini-2.0-flash-preview-image-generation",
+    model: "gemini-2.5-flash-image",
   });
 
   const response = await model.generateContent({

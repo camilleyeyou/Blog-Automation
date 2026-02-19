@@ -9,7 +9,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
     setError(null);
@@ -28,29 +28,52 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-[60vh] items-center justify-center">
-      <div className="w-full max-w-sm rounded-xl border border-beige bg-white p-8">
-        <h1 className="mb-1 text-xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="mb-6 text-sm text-stone">Enter your password to continue.</p>
+    <div className="flex min-h-screen items-center justify-center bg-cream px-4">
+      <div className="w-full max-w-xs">
+        {/* Brand mark */}
+        <div className="mb-8 text-center">
+          <div className="text-sm font-semibold tracking-tight text-ink">
+            Jesse A. Eisenbalm
+          </div>
+          <div className="mt-1 text-[10px] uppercase tracking-widest text-stone">
+            Blog Automation
+          </div>
+        </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Password"
-            autoFocus
-            className="rounded-lg border border-beige bg-cream px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone"
-          />
-          {error && <p className="text-sm text-red-600">{error}</p>}
-          <button
-            type="submit"
-            disabled={loading || !password}
-            className="rounded-lg bg-ink px-4 py-2 text-sm text-cream hover:bg-charcoal disabled:opacity-40"
-          >
-            {loading ? "Checking…" : "Enter"}
-          </button>
-        </form>
+        {/* Card */}
+        <div className="rounded-2xl border border-beige bg-white p-7 shadow-card-md">
+          <h1 className="mb-1 text-base font-semibold text-ink">Sign in</h1>
+          <p className="mb-6 text-xs text-stone leading-relaxed">
+            Enter your dashboard password to continue.
+          </p>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
+              autoFocus
+              className="w-full rounded-lg border border-beige bg-cream px-3 py-2.5 text-sm placeholder-stone/40 transition-colors focus:border-stone focus:outline-none focus:ring-2 focus:ring-stone/20"
+            />
+
+            {error && (
+              <p className="text-xs text-red-500">{error}</p>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading || !password}
+              className="w-full rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-cream transition-colors hover:bg-charcoal disabled:opacity-40"
+            >
+              {loading ? "Checking…" : "Continue"}
+            </button>
+          </form>
+        </div>
+
+        <p className="mt-6 text-center text-[10px] text-stone/50">
+          Stop. Breathe. Balm.
+        </p>
       </div>
     </div>
   );

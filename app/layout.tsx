@@ -1,6 +1,12 @@
 import type { Metadata } from "next";
-import { Nav } from "@/components/Nav";
+import { Inter } from "next/font/google";
 import "./globals.css";
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-sans",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Jesse A. Eisenbalm — Blog Automation",
@@ -13,11 +19,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className="min-h-screen bg-cream text-ink antialiased">
-        <Nav />
-        <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
-      </body>
+    <html lang="en" className={inter.variable}>
+      <body className="bg-cream text-ink antialiased">{children}</body>
     </html>
   );
 }

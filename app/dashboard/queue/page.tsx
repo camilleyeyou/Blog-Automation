@@ -4,11 +4,6 @@ import { useState, useEffect, useCallback } from "react";
 import { StatusBadge } from "@/components/StatusBadge";
 import type { QueueItem } from "@/services/supabase";
 
-const DASHBOARD_PASSWORD =
-  typeof window !== "undefined"
-    ? (localStorage.getItem("dashboard_password") ?? "")
-    : "";
-
 function getAuthHeaders(): HeadersInit {
   const pw =
     typeof window !== "undefined"
@@ -25,7 +20,7 @@ export default function QueuePage() {
   const [keyphrase, setKeyphrase] = useState("");
   const [adding, setAdding] = useState(false);
   const [running, setRunning] = useState(false);
-  const [runResult, setRunResult] = useState<string | null>(null);
+  const [runResult, setRunResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   const fetchItems = useCallback(async () => {
     setLoading(true);
@@ -46,7 +41,7 @@ export default function QueuePage() {
     void fetchItems();
   }, [fetchItems]);
 
-  async function handleAdd(e: React.FormEvent) {
+  async function handleAdd(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!topic.trim()) return;
     setAdding(true);
@@ -85,10 +80,17 @@ export default function QueuePage() {
         headers: getAuthHeaders(),
       });
       const data = (await res.json()) as { status?: string; error?: string };
-      setRunResult(data.error ? `Error: ${data.error}` : `Done — ${data.status}`);
+      if (data.error) {
+        setRunResult({ ok: false, message: data.error });
+      } else {
+        setRunResult({ ok: true, message: `Pipeline complete — ${data.status ?? "done"}` });
+      }
       await fetchItems();
     } catch (err) {
-      setRunResult(err instanceof Error ? err.message : "Failed to run pipeline");
+      setRunResult({
+        ok: false,
+        message: err instanceof Error ? err.message : "Failed to run pipeline",
+      });
     } finally {
       setRunning(false);
     }
@@ -98,9 +100,10 @@ export default function QueuePage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
+      {/* Header */}
+      <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Topic Queue</h1>
+          <h1 className="text-xl font-semibold tracking-tight">Topic Queue</h1>
           <p className="mt-1 text-sm text-stone">
             {pending.length} topic{pending.length !== 1 ? "s" : ""} pending
           </p>
@@ -108,46 +111,54 @@ export default function QueuePage() {
         <button
           onClick={handleRunNow}
           disabled={running || pending.length === 0}
-          className="rounded-lg bg-ink px-4 py-2 text-sm text-cream hover:bg-charcoal disabled:opacity-40"
+          className="rounded-lg bg-ink px-4 py-2 text-sm font-medium text-cream transition-colors hover:bg-charcoal disabled:opacity-40"
         >
-          {running ? "Running…" : "Run Now"}
+          {running ? "Running…" : "Run Pipeline"}
         </button>
       </div>
 
+      {/* Run result banner */}
       {runResult && (
-        <div className="rounded-lg border border-beige bg-white px-4 py-3 text-sm">
-          {runResult}
+        <div
+          className={`rounded-lg border px-4 py-3 text-sm ${
+            runResult.ok
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : "border-red-200 bg-red-50 text-red-600"
+          }`}
+        >
+          {runResult.message}
         </div>
       )}
 
+      {/* Error */}
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
           {error}
         </div>
       )}
 
-      {/* Add topic form */}
-      <div className="rounded-xl border border-beige bg-white p-5">
-        <h2 className="mb-4 text-sm font-medium text-stone uppercase tracking-wide">
-          Add topic
+      {/* Add topic */}
+      <div className="rounded-xl border border-beige bg-white p-5 shadow-card">
+        <h2 className="mb-4 text-xs font-medium uppercase tracking-widest text-stone">
+          Add Topic
         </h2>
         <form onSubmit={handleAdd} className="flex flex-col gap-3 sm:flex-row">
           <input
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
             placeholder="Topic"
-            className="flex-1 rounded-lg border border-beige bg-cream px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone"
+            className="flex-1 rounded-lg border border-beige bg-cream px-3 py-2.5 text-sm placeholder-stone/50 focus:border-stone focus:outline-none focus:ring-2 focus:ring-stone/20"
           />
           <input
             value={keyphrase}
             onChange={(e) => setKeyphrase(e.target.value)}
             placeholder="Focus keyphrase (optional)"
-            className="flex-1 rounded-lg border border-beige bg-cream px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone"
+            className="flex-1 rounded-lg border border-beige bg-cream px-3 py-2.5 text-sm placeholder-stone/50 focus:border-stone focus:outline-none focus:ring-2 focus:ring-stone/20"
           />
           <button
             type="submit"
             disabled={adding || !topic.trim()}
-            className="rounded-lg bg-ink px-4 py-2 text-sm text-cream hover:bg-charcoal disabled:opacity-40"
+            className="rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-cream transition-colors hover:bg-charcoal disabled:opacity-40"
           >
             {adding ? "Adding…" : "Add"}
           </button>
@@ -155,34 +166,43 @@ export default function QueuePage() {
       </div>
 
       {/* Queue table */}
-      <div className="overflow-hidden rounded-xl border border-beige">
+      <div className="overflow-hidden rounded-xl border border-beige bg-white shadow-card">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-beige bg-beige/40">
-              <th className="px-4 py-2.5 text-left font-medium text-charcoal">Topic</th>
-              <th className="px-4 py-2.5 text-left font-medium text-charcoal">Keyphrase</th>
-              <th className="px-4 py-2.5 text-left font-medium text-charcoal">Status</th>
-              <th className="px-4 py-2.5 text-left font-medium text-charcoal">Added</th>
-              <th className="px-4 py-2.5" />
+            <tr className="border-b border-beige bg-beige/30">
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-stone">
+                Topic
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-stone">
+                Keyphrase
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-stone">
+                Status
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-stone">
+                Added
+              </th>
+              <th className="px-4 py-3" />
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-beige/60">
             {loading ? (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-stone">
+                <td colSpan={5} className="px-4 py-10 text-center text-sm text-stone">
                   Loading…
                 </td>
               </tr>
             ) : items.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-stone">
-                  Queue is empty.
+                <td colSpan={5} className="px-4 py-10 text-center">
+                  <p className="text-sm text-stone">Queue is empty.</p>
+                  <p className="mt-1 text-xs text-stone/60">Add a topic above to get started.</p>
                 </td>
               </tr>
             ) : (
               items.map((item) => (
-                <tr key={item.id} className="border-b border-beige/60 bg-white last:border-0">
-                  <td className="px-4 py-3 text-charcoal">{item.topic}</td>
+                <tr key={item.id} className="hover:bg-cream/60 transition-colors">
+                  <td className="px-4 py-3 font-medium text-charcoal">{item.topic}</td>
                   <td className="px-4 py-3 text-stone">{item.focus_keyphrase ?? "—"}</td>
                   <td className="px-4 py-3">
                     <StatusBadge status={item.status} />
@@ -194,7 +214,7 @@ export default function QueuePage() {
                     {item.status === "pending" && (
                       <button
                         onClick={() => handleDiscard(item.id)}
-                        className="text-xs text-stone hover:text-red-600"
+                        className="text-xs text-stone/60 hover:text-red-500 transition-colors"
                       >
                         Discard
                       </button>

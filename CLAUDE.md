@@ -12,7 +12,7 @@ AI-powered pipeline that generates, reviews, and publishes SEO-optimised blog po
 | Language | TypeScript (strict mode, no `any`) |
 | Agent orchestration | Custom async pipeline — **no LangChain** |
 | AI — Content + Revision + Supervisor | OpenAI GPT-4o (`openai` npm package) |
-| AI — Image generation | Google Gemini (`@google/generative-ai`) — model: `gemini-2.0-flash-preview-image-generation` |
+| AI — Image generation | Google Gemini (`@google/generative-ai`) — model: `gemini-2.5-flash-image` |
 | Database + Storage | Supabase (`@supabase/supabase-js`) |
 | Scheduler | Vercel Cron Jobs (`vercel.json`) — **not** `node-cron` (won't work on serverless) |
 | Tests | Vitest |
