@@ -93,6 +93,15 @@ export async function getAllQueueItems(): Promise<QueueItem[]> {
   return (data ?? []) as QueueItem[];
 }
 
+export async function countPendingQueueItems(): Promise<number> {
+  const { count, error } = await supabase
+    .from("automation_queue")
+    .select("*", { count: "exact", head: true })
+    .eq("status", "pending");
+  if (error) throw new Error(`Failed to count pending items: ${error.message}`);
+  return count ?? 0;
+}
+
 export async function addQueueItem(
   topic: string,
   focusKeyphrase?: string,

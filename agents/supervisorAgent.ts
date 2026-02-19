@@ -1,17 +1,26 @@
 import { runContentAgent } from "./contentAgent";
 import { runRevisionAgent, type RevisionResult } from "./revisionAgent";
 import { runImageAgent } from "./imageAgent";
+import { runTopicAgent } from "./topicAgent";
 import { createPost } from "@/services/blogApi";
 import {
   dequeueNextTopic,
   updateQueueStatus,
   insertLog,
+  countPendingQueueItems,
+  getAllQueueItems,
+  addQueueItem,
   type QueueItem,
 } from "@/services/supabase";
 
 const AUTO_PUBLISH_THRESHOLD = Number(process.env.AUTO_PUBLISH_THRESHOLD ?? 85);
 const DRAFT_THRESHOLD = Number(process.env.DRAFT_THRESHOLD ?? 70);
 const MAX_RETRIES = 2;
+
+/** Replenish queue when pending count drops below this threshold */
+const QUEUE_REPLENISH_THRESHOLD = 6;
+/** How many topics to generate per replenishment */
+const QUEUE_REPLENISH_COUNT = 15;
 
 export type PipelineStatus = "success" | "draft" | "held" | "error";
 
@@ -31,7 +40,15 @@ export interface PipelineResult {
  * Dequeues → generates → revises → images → publishes or holds.
  */
 export async function runPipeline(): Promise<PipelineResult> {
-  // 1. Dequeue next topic
+  // 1. Auto-replenish queue if running low (non-blocking after the first dequeue)
+  const pendingCount = await countPendingQueueItems();
+  if (pendingCount < QUEUE_REPLENISH_THRESHOLD) {
+    replenishQueue().catch((err: unknown) =>
+      console.error("Queue replenishment failed (non-fatal):", err)
+    );
+  }
+
+  // 2. Dequeue next topic
   const queueItem = await dequeueNextTopic();
   if (!queueItem) {
     return { status: "error", queueItem: null, error: "No pending topics in queue" };
@@ -164,6 +181,19 @@ function parseRetryDelay(err: unknown): number | null {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Generate new topics and insert them into the queue.
+ * Called non-blocking when the pending count drops below QUEUE_REPLENISH_THRESHOLD.
+ */
+async function replenishQueue(): Promise<void> {
+  const allItems = await getAllQueueItems();
+  const existingTopics = allItems.map((item) => item.topic);
+  const suggestions = await runTopicAgent(QUEUE_REPLENISH_COUNT, existingTopics);
+  await Promise.all(
+    suggestions.map((s) => addQueueItem(s.topic, s.focus_keyphrase, s.keywords))
+  );
 }
 
 function validatePayload(revision: RevisionResult, coverImageUrl: string): void {
