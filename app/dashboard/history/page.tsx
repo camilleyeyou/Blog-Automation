@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ConfidenceBar } from "@/components/ConfidenceBar";
 import type { AutomationLog } from "@/services/supabase";
@@ -140,10 +141,18 @@ export default function HistoryPage() {
                             </p>
                           )}
                           {log.post_id && (
-                            <p className="text-xs text-stone">
-                              Post ID:{" "}
-                              <span className="font-mono">{log.post_id}</span>
-                            </p>
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs text-stone">
+                                Post ID:{" "}
+                                <span className="font-mono">{log.post_id}</span>
+                              </p>
+                              <Link
+                                href={`/dashboard/post/${log.post_id}`}
+                                className="rounded-lg bg-ink px-3 py-1.5 text-xs font-medium text-cream transition-colors hover:bg-charcoal"
+                              >
+                                View Post →
+                              </Link>
+                            </div>
                           )}
                           {!log.revision_notes && !log.error_message && !log.post_id && (
                             <p className="text-xs text-stone/50">No additional details.</p>
