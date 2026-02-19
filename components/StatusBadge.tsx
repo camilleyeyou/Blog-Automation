@@ -9,14 +9,14 @@ type Status =
   | "error";
 
 const styles: Record<Status, string> = {
-  pending:     "bg-stone/10 text-charcoal ring-stone/20",
-  in_progress: "bg-blue-50 text-blue-700 ring-blue-200",
-  published:   "bg-emerald-50 text-emerald-700 ring-emerald-200",
-  success:     "bg-emerald-50 text-emerald-700 ring-emerald-200",
-  draft:       "bg-amber-50 text-amber-700 ring-amber-200",
-  held:        "bg-orange-50 text-orange-700 ring-orange-200",
-  discarded:   "bg-beige text-stone ring-beige",
-  error:       "bg-red-50 text-red-600 ring-red-200",
+  pending:     "bg-muted/10 text-muted ring-muted/20",
+  in_progress: "bg-blue-500/10 text-blue-400 ring-blue-500/20",
+  published:   "bg-emerald-500/10 text-emerald-400 ring-emerald-500/20",
+  success:     "bg-emerald-500/10 text-emerald-400 ring-emerald-500/20",
+  draft:       "bg-amber/10 text-amber ring-amber/20",
+  held:        "bg-orange-500/10 text-orange-400 ring-orange-500/20",
+  discarded:   "bg-raised text-muted ring-edge",
+  error:       "bg-red-500/10 text-red-400 ring-red-500/20",
 };
 
 const labels: Record<Status, string> = {
@@ -34,7 +34,7 @@ export function StatusBadge({ status }: { status: Status }) {
   return (
     <span
       className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ring-1 ${
-        styles[status] ?? "bg-beige text-charcoal ring-beige"
+        styles[status] ?? "bg-raised text-muted ring-edge"
       }`}
     >
       {labels[status] ?? status}

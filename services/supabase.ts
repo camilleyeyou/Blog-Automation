@@ -147,6 +147,38 @@ export async function getLogs(limit = 50): Promise<AutomationLog[]> {
   return (data ?? []) as AutomationLog[];
 }
 
+// ─── Schedule settings ────────────────────────────────────────────────────────
+// Requires this one-time SQL migration in Supabase:
+//   CREATE TABLE IF NOT EXISTS app_settings (
+//     key TEXT PRIMARY KEY,
+//     value JSONB NOT NULL,
+//     updated_at TIMESTAMPTZ DEFAULT now()
+//   );
+//   INSERT INTO app_settings (key, value) VALUES ('scheduler_active', 'true')
+//   ON CONFLICT (key) DO NOTHING;
+
+export async function getSchedulerActive(): Promise<boolean> {
+  try {
+    const { data, error } = await supabase
+      .from("app_settings")
+      .select("value")
+      .eq("key", "scheduler_active")
+      .single();
+    if (error || !data) return true;
+    return data.value === true || data.value === "true";
+  } catch {
+    return true; // default active if table doesn't exist yet
+  }
+}
+
+export async function setSchedulerActive(active: boolean): Promise<void> {
+  await supabase.from("app_settings").upsert({
+    key: "scheduler_active",
+    value: active,
+    updated_at: new Date().toISOString(),
+  });
+}
+
 export async function getHeldItems(): Promise<
   { queue: QueueItem; log: AutomationLog }[]
 > {

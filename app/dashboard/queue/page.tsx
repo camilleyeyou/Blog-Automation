@@ -12,6 +12,20 @@ function getAuthHeaders(): HeadersInit {
   return { "x-dashboard-password": pw, "Content-Type": "application/json" };
 }
 
+function Toast({ message, ok }: { message: string; ok: boolean }) {
+  return (
+    <div
+      className={`fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-lg border px-4 py-3 text-sm shadow-card-md ${
+        ok
+          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+          : "border-red-500/30 bg-red-500/10 text-red-400"
+      }`}
+    >
+      {message}
+    </div>
+  );
+}
+
 export default function QueuePage() {
   const [items, setItems] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -20,7 +34,12 @@ export default function QueuePage() {
   const [keyphrase, setKeyphrase] = useState("");
   const [adding, setAdding] = useState(false);
   const [running, setRunning] = useState(false);
-  const [runResult, setRunResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [toast, setToast] = useState<{ message: string; ok: boolean } | null>(null);
+
+  function showToast(message: string, ok: boolean) {
+    setToast({ message, ok });
+    setTimeout(() => setToast(null), 3500);
+  }
 
   const fetchItems = useCallback(async () => {
     setLoading(true);
@@ -55,6 +74,7 @@ export default function QueuePage() {
       setTopic("");
       setKeyphrase("");
       await fetchItems();
+      showToast("Topic added", true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add topic");
     } finally {
@@ -73,24 +93,17 @@ export default function QueuePage() {
 
   async function handleRunNow() {
     setRunning(true);
-    setRunResult(null);
     try {
       const res = await fetch("/api/pipeline", {
         method: "POST",
         headers: getAuthHeaders(),
       });
       const data = (await res.json()) as { status?: string; error?: string };
-      if (data.error) {
-        setRunResult({ ok: false, message: data.error });
-      } else {
-        setRunResult({ ok: true, message: `Pipeline complete — ${data.status ?? "done"}` });
-      }
+      if (data.error) throw new Error(data.error);
+      showToast(`Pipeline complete — ${data.status ?? "done"}`, true);
       await fetchItems();
     } catch (err) {
-      setRunResult({
-        ok: false,
-        message: err instanceof Error ? err.message : "Failed to run pipeline",
-      });
+      showToast(err instanceof Error ? err.message : "Pipeline failed", false);
     } finally {
       setRunning(false);
     }
@@ -99,47 +112,33 @@ export default function QueuePage() {
   const pending = items.filter((i) => i.status === "pending");
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-5">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Topic Queue</h1>
-          <p className="mt-1 text-sm text-stone">
+          <h1 className="text-xl font-semibold text-white">Topic Queue</h1>
+          <p className="mt-1 text-sm text-muted">
             {pending.length} topic{pending.length !== 1 ? "s" : ""} pending
           </p>
         </div>
         <button
           onClick={handleRunNow}
           disabled={running || pending.length === 0}
-          className="rounded-lg bg-ink px-4 py-2 text-sm font-medium text-cream transition-colors hover:bg-charcoal disabled:opacity-40"
+          className="rounded-lg bg-amber px-4 py-2 text-sm font-semibold text-bg transition-colors hover:bg-amber/90 disabled:opacity-40"
         >
           {running ? "Running…" : "Run Pipeline"}
         </button>
       </div>
 
-      {/* Run result banner */}
-      {runResult && (
-        <div
-          className={`rounded-lg border px-4 py-3 text-sm ${
-            runResult.ok
-              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-              : "border-red-200 bg-red-50 text-red-600"
-          }`}
-        >
-          {runResult.message}
-        </div>
-      )}
-
-      {/* Error */}
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
           {error}
         </div>
       )}
 
       {/* Add topic */}
-      <div className="rounded-xl border border-beige bg-white p-5 shadow-card">
-        <h2 className="mb-4 text-xs font-medium uppercase tracking-widest text-stone">
+      <div className="rounded-xl border border-edge bg-surface p-5">
+        <h2 className="mb-4 text-xs font-medium uppercase tracking-widest text-muted">
           Add Topic
         </h2>
         <form onSubmit={handleAdd} className="flex flex-col gap-3 sm:flex-row">
@@ -147,18 +146,18 @@ export default function QueuePage() {
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
             placeholder="Topic"
-            className="flex-1 rounded-lg border border-beige bg-cream px-3 py-2.5 text-sm placeholder-stone/50 focus:border-stone focus:outline-none focus:ring-2 focus:ring-stone/20"
+            className="flex-1 rounded-lg border border-edge bg-raised px-3 py-2.5 text-sm text-white placeholder-muted/40 transition-colors focus:border-amber/50 focus:outline-none focus:ring-2 focus:ring-amber/10"
           />
           <input
             value={keyphrase}
             onChange={(e) => setKeyphrase(e.target.value)}
             placeholder="Focus keyphrase (optional)"
-            className="flex-1 rounded-lg border border-beige bg-cream px-3 py-2.5 text-sm placeholder-stone/50 focus:border-stone focus:outline-none focus:ring-2 focus:ring-stone/20"
+            className="flex-1 rounded-lg border border-edge bg-raised px-3 py-2.5 text-sm text-white placeholder-muted/40 transition-colors focus:border-amber/50 focus:outline-none focus:ring-2 focus:ring-amber/10"
           />
           <button
             type="submit"
             disabled={adding || !topic.trim()}
-            className="rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-cream transition-colors hover:bg-charcoal disabled:opacity-40"
+            className="rounded-lg bg-amber px-4 py-2.5 text-sm font-semibold text-bg transition-colors hover:bg-amber/90 disabled:opacity-40"
           >
             {adding ? "Adding…" : "Add"}
           </button>
@@ -166,55 +165,43 @@ export default function QueuePage() {
       </div>
 
       {/* Queue table */}
-      <div className="overflow-hidden rounded-xl border border-beige bg-white shadow-card">
+      <div className="overflow-hidden rounded-xl border border-edge bg-surface">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-beige bg-beige/30">
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-stone">
-                Topic
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-stone">
-                Keyphrase
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-stone">
-                Status
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-stone">
-                Added
-              </th>
-              <th className="px-4 py-3" />
+            <tr className="border-b border-edge">
+              <th className="px-5 py-3.5 text-left text-xs font-medium uppercase tracking-wide text-muted">Topic</th>
+              <th className="px-5 py-3.5 text-left text-xs font-medium uppercase tracking-wide text-muted">Keyphrase</th>
+              <th className="px-5 py-3.5 text-left text-xs font-medium uppercase tracking-wide text-muted">Status</th>
+              <th className="px-5 py-3.5 text-left text-xs font-medium uppercase tracking-wide text-muted">Added</th>
+              <th className="px-5 py-3.5" />
             </tr>
           </thead>
-          <tbody className="divide-y divide-beige/60">
+          <tbody className="divide-y divide-edge">
             {loading ? (
               <tr>
-                <td colSpan={5} className="px-4 py-10 text-center text-sm text-stone">
-                  Loading…
-                </td>
+                <td colSpan={5} className="px-5 py-12 text-center text-sm text-muted">Loading…</td>
               </tr>
             ) : items.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-10 text-center">
-                  <p className="text-sm text-stone">Queue is empty.</p>
-                  <p className="mt-1 text-xs text-stone/60">Add a topic above to get started.</p>
+                <td colSpan={5} className="px-5 py-12 text-center">
+                  <p className="text-sm text-muted">Queue is empty.</p>
+                  <p className="mt-1 text-xs text-muted/60">Add a topic above or hit Replenish Queue on the overview.</p>
                 </td>
               </tr>
             ) : (
               items.map((item) => (
-                <tr key={item.id} className="hover:bg-cream/60 transition-colors">
-                  <td className="px-4 py-3 font-medium text-charcoal">{item.topic}</td>
-                  <td className="px-4 py-3 text-stone">{item.focus_keyphrase ?? "—"}</td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={item.status} />
-                  </td>
-                  <td className="px-4 py-3 text-stone">
+                <tr key={item.id} className="transition-colors hover:bg-raised/50">
+                  <td className="px-5 py-3.5 font-medium text-white">{item.topic}</td>
+                  <td className="px-5 py-3.5 text-muted">{item.focus_keyphrase ?? "—"}</td>
+                  <td className="px-5 py-3.5"><StatusBadge status={item.status} /></td>
+                  <td className="px-5 py-3.5 text-muted">
                     {new Date(item.created_at).toLocaleDateString()}
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-5 py-3.5 text-right">
                     {item.status === "pending" && (
                       <button
                         onClick={() => handleDiscard(item.id)}
-                        className="text-xs text-stone/60 hover:text-red-500 transition-colors"
+                        className="text-xs text-muted/60 transition-colors hover:text-red-400"
                       >
                         Discard
                       </button>
@@ -226,6 +213,8 @@ export default function QueuePage() {
           </tbody>
         </table>
       </div>
+
+      {toast && <Toast message={toast.message} ok={toast.ok} />}
     </div>
   );
 }

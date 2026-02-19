@@ -4,11 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Nav } from "@/components/Nav";
 
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   useEffect(() => {
@@ -17,11 +13,9 @@ export default function DashboardLayout({
   }, [router]);
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen flex-col bg-bg">
       <Nav />
-      <div className="flex-1 min-w-0 overflow-auto">
-        <main className="mx-auto max-w-4xl px-8 py-10">{children}</main>
-      </div>
+      <main className="mx-auto w-full max-w-5xl px-6 py-8">{children}</main>
     </div>
   );
 }

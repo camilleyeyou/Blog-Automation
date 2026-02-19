@@ -13,14 +13,10 @@ export const metadata: Metadata = {
   description: "AI-powered blog content pipeline dashboard",
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={inter.variable}>
-      <body className="bg-cream text-ink antialiased">{children}</body>
+      <body className="bg-bg text-white antialiased">{children}</body>
     </html>
   );
 }

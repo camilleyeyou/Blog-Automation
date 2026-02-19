@@ -8,19 +8,31 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        cream: "#FAF8F3",
-        beige: "#E8DDD0",
-        stone: "#C4B5A5",
+        // ── Dark UI ───────────────────────────────────
+        bg:      "#1b1d26",
+        surface: "#21242e",
+        raised:  "#282c38",
+        edge:    "#2e3348",
+        muted:   "#8891a8",
+        // ── Accent ────────────────────────────────────
+        amber: {
+          DEFAULT: "#f5a623",
+          dim:     "rgba(245,166,35,0.10)",
+        },
+        // ── Legacy (post preview prose only) ──────────
+        cream:    "#FAF8F3",
+        beige:    "#E8DDD0",
+        stone:    "#C4B5A5",
         charcoal: "#2A2A2A",
-        ink: "#1A1A1A",
+        ink:      "#1A1A1A",
       },
       fontFamily: {
         sans: ["var(--font-sans)", "system-ui", "sans-serif"],
         mono: ["var(--font-mono)", "monospace"],
       },
       boxShadow: {
-        card: "0 1px 3px 0 rgba(26,26,26,0.06), 0 1px 2px -1px rgba(26,26,26,0.04)",
-        "card-md": "0 4px 12px -2px rgba(26,26,26,0.08), 0 2px 4px -2px rgba(26,26,26,0.05)",
+        card:     "0 1px 4px rgba(0,0,0,0.35)",
+        "card-md":"0 4px 20px rgba(0,0,0,0.45)",
       },
     },
   },
