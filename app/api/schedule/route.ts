@@ -1,18 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyDashboardAuth } from "@/lib/auth";
-import { getSchedulerActive, setSchedulerActive } from "@/services/supabase";
-
-/** Scheduled run times (matches vercel.json cron entries) */
-const SCHEDULE_TIMES = ["06:00", "12:00", "18:00"];
-const TIMEZONE = "UTC";
+import {
+  getScheduleSettings,
+  setScheduleSettings,
+  type ScheduleSettings,
+} from "@/services/supabase";
 
 export async function GET(request: NextRequest) {
   if (!verifyDashboardAuth(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-
-  const active = await getSchedulerActive();
-  return NextResponse.json({ active, times: SCHEDULE_TIMES, timezone: TIMEZONE });
+  const settings = await getScheduleSettings();
+  return NextResponse.json(settings);
 }
 
 export async function POST(request: NextRequest) {
@@ -20,17 +19,50 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: { active?: boolean };
+  let body: Partial<ScheduleSettings>;
   try {
-    body = (await request.json()) as { active?: boolean };
+    body = (await request.json()) as Partial<ScheduleSettings>;
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  if (typeof body.active !== "boolean") {
+  // Validate active
+  if (body.active !== undefined && typeof body.active !== "boolean") {
     return NextResponse.json({ error: "active must be a boolean" }, { status: 400 });
   }
 
-  await setSchedulerActive(body.active);
-  return NextResponse.json({ active: body.active, times: SCHEDULE_TIMES, timezone: TIMEZONE });
+  // Validate run_times
+  if (body.run_times !== undefined) {
+    if (!Array.isArray(body.run_times) || body.run_times.length < 1 || body.run_times.length > 5) {
+      return NextResponse.json(
+        { error: "run_times must be an array of 1–5 time strings" },
+        { status: 400 }
+      );
+    }
+    const validTime = /^([01]\d|2[0-3]):[0-5]\d$/;
+    for (const t of body.run_times) {
+      if (!validTime.test(t)) {
+        return NextResponse.json(
+          { error: `Invalid time format: "${t}". Use HH:MM (24-hour)` },
+          { status: 400 }
+        );
+      }
+    }
+  }
+
+  // Validate timezone
+  if (body.timezone !== undefined) {
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: body.timezone });
+    } catch {
+      return NextResponse.json(
+        { error: `Invalid timezone: "${body.timezone}"` },
+        { status: 400 }
+      );
+    }
+  }
+
+  await setScheduleSettings(body);
+  const updated = await getScheduleSettings();
+  return NextResponse.json(updated);
 }

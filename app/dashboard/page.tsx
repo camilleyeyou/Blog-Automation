@@ -156,15 +156,24 @@ function Toast({ message, ok }: { message: string; ok: boolean }) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+interface ScheduleInfo {
+  active: boolean;
+  run_times: string[];
+  timezone: string;
+}
+
 export default function OverviewPage() {
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
   const [logs, setLogs] = useState<AutomationLog[]>([]);
-  const [schedulerActive, setSchedulerActive] = useState<boolean>(true);
+  const [scheduleInfo, setScheduleInfo] = useState<ScheduleInfo>({ active: true, run_times: ["06:00", "12:00", "18:00"], timezone: "UTC" });
   const [loading, setLoading] = useState(true);
+
+  const schedulerActive = scheduleInfo.active;
 
   const [pipelineLoading, setPipelineLoading] = useState(false);
   const [replenishLoading, setReplenishLoading] = useState(false);
   const [schedulerLoading, setSchedulerLoading] = useState(false);
+
 
   const [toast, setToast] = useState<{ message: string; ok: boolean } | null>(null);
 
@@ -191,8 +200,8 @@ export default function OverviewPage() {
         setLogs(d.logs ?? []);
       }
       if (sRes.ok) {
-        const d = (await sRes.json()) as { active: boolean };
-        setSchedulerActive(d.active ?? true);
+        const d = (await sRes.json()) as ScheduleInfo;
+        setScheduleInfo({ active: d.active ?? true, run_times: d.run_times ?? ["06:00", "12:00", "18:00"], timezone: d.timezone ?? "UTC" });
       }
     } finally {
       setLoading(false);
@@ -232,8 +241,8 @@ export default function OverviewPage() {
         body: JSON.stringify({ active: !schedulerActive }),
       });
       if (!res.ok) throw new Error("Failed");
-      const d = (await res.json()) as { active: boolean };
-      setSchedulerActive(d.active);
+      const d = (await res.json()) as ScheduleInfo;
+      setScheduleInfo((prev) => ({ ...prev, active: d.active }));
       showToast(d.active ? "Scheduler started" : "Scheduler stopped", true);
     } catch {
       showToast("Failed to update scheduler", false);
@@ -370,15 +379,15 @@ export default function OverviewPage() {
           <div className="space-y-3 text-sm">
             <div className="flex items-center justify-between">
               <span className="text-muted">Daily runs</span>
-              <span className="font-medium text-white">3×</span>
+              <span className="font-medium text-white">{scheduleInfo.run_times.length}×</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-muted">Times (UTC)</span>
-              <span className="font-mono text-white">06:00 · 12:00 · 18:00</span>
+              <span className="text-muted">Times</span>
+              <span className="font-mono text-white">{scheduleInfo.run_times.join(" · ")}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted">Timezone</span>
-              <span className="font-medium text-white">UTC</span>
+              <span className="font-medium text-white">{scheduleInfo.timezone}</span>
             </div>
           </div>
         </div>

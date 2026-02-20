@@ -157,26 +157,80 @@ export async function getLogs(limit = 50): Promise<AutomationLog[]> {
 //   INSERT INTO app_settings (key, value) VALUES ('scheduler_active', 'true')
 //   ON CONFLICT (key) DO NOTHING;
 
-export async function getSchedulerActive(): Promise<boolean> {
+export interface ScheduleSettings {
+  active: boolean;
+  run_times: string[]; // HH:MM strings in the configured timezone, e.g. ["06:00","12:00","18:00"]
+  timezone: string;    // IANA timezone identifier, e.g. "UTC" or "America/New_York"
+}
+
+/** Read all schedule settings in one round-trip. Gracefully defaults on error. */
+export async function getScheduleSettings(): Promise<ScheduleSettings> {
   try {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("app_settings")
-      .select("value")
-      .eq("key", "scheduler_active")
-      .single();
-    if (error || !data) return true;
-    return data.value === true || data.value === "true";
+      .select("key, value")
+      .in("key", ["scheduler_active", "scheduler_run_times", "scheduler_timezone"]);
+
+    const map = Object.fromEntries(
+      (data ?? []).map((r: { key: string; value: unknown }) => [r.key, r.value])
+    );
+
+    const active =
+      map.scheduler_active == null
+        ? true
+        : map.scheduler_active === true || map.scheduler_active === "true";
+
+    const run_times = Array.isArray(map.scheduler_run_times)
+      ? (map.scheduler_run_times as string[])
+      : ["06:00", "12:00", "18:00"];
+
+    const timezone =
+      typeof map.scheduler_timezone === "string"
+        ? map.scheduler_timezone
+        : "UTC";
+
+    return { active, run_times, timezone };
   } catch {
-    return true; // default active if table doesn't exist yet
+    return { active: true, run_times: ["06:00", "12:00", "18:00"], timezone: "UTC" };
   }
 }
 
+/** Persist any subset of schedule settings. */
+export async function setScheduleSettings(
+  patch: Partial<ScheduleSettings>
+): Promise<void> {
+  const now = new Date().toISOString();
+  const rows: { key: string; value: unknown; updated_at: string }[] = [];
+  if (patch.active !== undefined)
+    rows.push({ key: "scheduler_active", value: patch.active, updated_at: now });
+  if (patch.run_times !== undefined)
+    rows.push({ key: "scheduler_run_times", value: patch.run_times, updated_at: now });
+  if (patch.timezone !== undefined)
+    rows.push({ key: "scheduler_timezone", value: patch.timezone, updated_at: now });
+  if (rows.length > 0)
+    await supabase.from("app_settings").upsert(rows);
+}
+
+/** Convenience alias used by legacy callers (Nav status badge). */
+export async function getSchedulerActive(): Promise<boolean> {
+  const s = await getScheduleSettings();
+  return s.active;
+}
+
+/** Convenience alias used by legacy callers. */
 export async function setSchedulerActive(active: boolean): Promise<void> {
-  await supabase.from("app_settings").upsert({
-    key: "scheduler_active",
-    value: active,
-    updated_at: new Date().toISOString(),
-  });
+  await setScheduleSettings({ active });
+}
+
+/**
+ * Reset any queue items that are stuck as "in_progress" (e.g. from a crashed
+ * pipeline run). Called at the start of each pipeline execution.
+ */
+export async function resetInProgressItems(): Promise<void> {
+  await supabase
+    .from("automation_queue")
+    .update({ status: "pending" })
+    .eq("status", "in_progress");
 }
 
 export async function getHeldItems(): Promise<
