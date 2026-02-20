@@ -1,6 +1,7 @@
 """Image agent — Gemini image generation + upload."""
 from __future__ import annotations
 
+import logging
 import os
 import random
 import re
@@ -10,6 +11,7 @@ from google.genai import types
 
 from services.upload_api import upload_image
 
+logger = logging.getLogger(__name__)
 _client: genai.Client | None = None
 
 
@@ -128,6 +130,8 @@ def run_image_agent(title: str, excerpt: str) -> str:
 
     prompt = _build_prompt(title, scene, lighting, surface, include_product)
 
+    logger.info("[image] calling Gemini model=%s mood=%s scene=%s", _MODEL, mood, scene_key)
+
     response = _gemini().models.generate_content(
         model=_MODEL,
         contents=prompt,
@@ -136,14 +140,27 @@ def run_image_agent(title: str, excerpt: str) -> str:
         ),
     )
 
+    # Log full response structure for debugging
+    candidates = response.candidates or []
+    logger.info("[image] candidates=%d", len(candidates))
+    for ci, candidate in enumerate(candidates):
+        finish = getattr(candidate, "finish_reason", None)
+        parts = candidate.content.parts if candidate.content else []
+        logger.info("[image] candidate[%d] finish_reason=%s parts=%d", ci, finish, len(parts or []))
+        for pi, part in enumerate(parts or []):
+            has_inline = part.inline_data is not None
+            text_preview = repr(part.text[:80]) if getattr(part, "text", None) else None
+            logger.info("[image] candidate[%d] part[%d] inline_data=%s text=%s", ci, pi, has_inline, text_preview)
+
     # Extract the first image part from the response
     image_bytes: bytes | None = None
     mime_type = "image/png"
-    for candidate in response.candidates or []:
-        for part in candidate.content.parts or []:
+    for candidate in candidates:
+        for part in (candidate.content.parts if candidate.content else []) or []:
             if part.inline_data is not None:
                 image_bytes = part.inline_data.data
                 mime_type = part.inline_data.mime_type or "image/png"
+                logger.info("[image] found image inline_data mime=%s bytes=%d", mime_type, len(image_bytes) if image_bytes else 0)
                 break
         if image_bytes:
             break
