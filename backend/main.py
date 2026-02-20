@@ -33,6 +33,8 @@ def _pipeline_job() -> None:
         logger.info("[scheduler] firing pipeline job")
         result = run_pipeline()
         logger.info("[scheduler] done: %s", result.status)
+        if result.error:
+            logger.error("[scheduler] error detail: %s", result.error)
     except Exception as exc:
         logger.error("[scheduler] pipeline error: %s", exc)
 
