@@ -132,13 +132,17 @@ def run_image_agent(title: str, excerpt: str) -> str:
 
     logger.info("[image] calling Gemini model=%s mood=%s scene=%s", _MODEL, mood, scene_key)
 
-    response = _gemini().models.generate_content(
-        model=_MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_modalities=["IMAGE", "TEXT"],
-        ),
-    )
+    try:
+        response = _gemini().models.generate_content(
+            model=_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_modalities=["IMAGE", "TEXT"],
+            ),
+        )
+    except Exception as exc:
+        logger.error("[image] Gemini API exception: %s: %s", type(exc).__name__, exc)
+        raise
 
     # Log full response structure for debugging
     candidates = response.candidates or []

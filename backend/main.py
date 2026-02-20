@@ -120,6 +120,8 @@ async def pipeline_route(request: Request):
     loop = asyncio.get_event_loop()
     try:
         result = await loop.run_in_executor(_executor, run_pipeline)
+        if result.error:
+            logger.error("[/pipeline] pipeline error: %s", result.error)
         return JSONResponse(result.to_dict())
     except Exception as exc:
         logger.error("[/pipeline] error: %s", exc)
