@@ -12,14 +12,18 @@ from services.upload_api import upload_image
 
 logger = logging.getLogger(__name__)
 
-_MODEL = "imagen-3.0-generate-002"
+_MODEL = "gemini-2.0-flash-exp"
 _client: genai.Client | None = None
 
 
 def _get_client() -> genai.Client:
     global _client
     if _client is None:
-        _client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+        # v1alpha is required for native image generation via response_modalities
+        _client = genai.Client(
+            api_key=os.environ["GEMINI_API_KEY"],
+            http_options={"api_version": "v1alpha"},
+        )
     return _client
 
 
@@ -129,27 +133,37 @@ def run_image_agent(title: str, excerpt: str) -> str:
 
     prompt = _build_prompt(title, scene, lighting, surface, include_product)
 
-    logger.info("[image] calling Imagen model=%s mood=%s scene=%s", _MODEL, mood, scene_key)
+    logger.info("[image] calling Gemini model=%s mood=%s scene=%s", _MODEL, mood, scene_key)
 
     client = _get_client()
-    response = client.models.generate_images(
+    response = client.models.generate_content(
         model=_MODEL,
-        prompt=prompt,
-        config=types.GenerateImagesConfig(
-            number_of_images=1,
-            aspect_ratio="16:9",
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            response_modalities=["IMAGE", "TEXT"],
         ),
     )
 
-    if not response.generated_images:
-        raise RuntimeError("Image agent: no images returned from Imagen")
+    # Extract image bytes from response parts
+    image_bytes: bytes | None = None
+    mime_type = "image/png"
 
-    image_bytes = response.generated_images[0].image.image_bytes
+    for candidate in response.candidates or []:
+        for part in (candidate.content.parts if candidate.content else []) or []:
+            inline = getattr(part, "inline_data", None)
+            if inline and inline.data:
+                raw = inline.data
+                image_bytes = raw if isinstance(raw, bytes) else bytes(raw)
+                mime_type = inline.mime_type or "image/png"
+                logger.info("[image] received image mime=%s bytes=%d", mime_type, len(image_bytes))
+                break
+        if image_bytes:
+            break
+
     if not image_bytes:
-        raise RuntimeError("Image agent: empty image_bytes from Imagen")
+        raise RuntimeError("Image agent: no image returned from Gemini")
 
-    logger.info("[image] received image bytes=%d", len(image_bytes))
-    return upload_image(image_bytes, "image/png")
+    return upload_image(image_bytes, mime_type)
 
 
 def _build_prompt(
