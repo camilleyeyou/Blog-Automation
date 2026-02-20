@@ -1,23 +1,26 @@
-"""Image agent — DALL-E 3 cover image generation + upload."""
+"""Image agent — Gemini image generation + upload."""
 from __future__ import annotations
 
-import base64
 import os
 import random
+import re
 
-from openai import OpenAI
+from google import genai
+from google.genai import types
 
 from services.upload_api import upload_image
 
-_client: OpenAI | None = None
+_client: genai.Client | None = None
 
 
-def _openai() -> OpenAI:
+def _gemini() -> genai.Client:
     global _client
     if _client is None:
-        _client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+        _client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
     return _client
 
+
+_MODEL = "gemini-2.0-flash-preview-image-generation"
 
 # ── Product specification ──────────────────────────────────────────────────────
 
@@ -86,8 +89,6 @@ _SCENES: dict[str, list[str]] = {
 
 # ── Mood detection ─────────────────────────────────────────────────────────────
 
-import re
-
 _MOOD_MAP = {
     "mindfulness":  re.compile(r"meditat|mindful|breath|pause|slow|present|ritual|calm|still|quiet"),
     "productivity": re.compile(r"productiv|focus|work|creat|routine|habit|morning|intention|discipline"),
@@ -117,7 +118,7 @@ def _detect_mood(title: str, excerpt: str) -> str:
 # ── Agent ──────────────────────────────────────────────────────────────────────
 
 def run_image_agent(title: str, excerpt: str) -> str:
-    """Generate a cover image and return its public URL."""
+    """Generate a cover image with Gemini and return its public URL."""
     mood = _detect_mood(title, excerpt)
     scene_key = random.choice(_SCENE_MAP[mood])
     scene = random.choice(_SCENES[scene_key])
@@ -127,21 +128,30 @@ def run_image_agent(title: str, excerpt: str) -> str:
 
     prompt = _build_prompt(title, scene, lighting, surface, include_product)
 
-    response = _openai().images.generate(
-        model="dall-e-3",
-        prompt=prompt,
-        n=1,
-        size="1792x1024",
-        quality="standard",
-        response_format="b64_json",
+    response = _gemini().models.generate_content(
+        model=_MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            response_modalities=["IMAGE", "TEXT"],
+        ),
     )
 
-    b64 = response.data[0].b64_json if response.data else None
-    if not b64:
-        raise RuntimeError("Image agent: no image data from DALL-E 3")
+    # Extract the first image part from the response
+    image_bytes: bytes | None = None
+    mime_type = "image/png"
+    for candidate in response.candidates or []:
+        for part in candidate.content.parts or []:
+            if part.inline_data is not None:
+                image_bytes = part.inline_data.data
+                mime_type = part.inline_data.mime_type or "image/png"
+                break
+        if image_bytes:
+            break
 
-    image_bytes = base64.b64decode(b64)
-    return upload_image(image_bytes, "image/png")
+    if not image_bytes:
+        raise RuntimeError("Image agent: no image returned from Gemini")
+
+    return upload_image(image_bytes, mime_type)
 
 
 def _build_prompt(
