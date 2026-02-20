@@ -18,14 +18,11 @@ _client: genai.Client | None = None
 def _gemini() -> genai.Client:
     global _client
     if _client is None:
-        _client = genai.Client(
-            api_key=os.environ["GEMINI_API_KEY"],
-            http_options={"api_version": "v1alpha"},
-        )
+        _client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
     return _client
 
 
-_MODEL = "gemini-2.0-flash-preview-image-generation"
+_MODEL = "imagen-3.0-generate-001"
 
 # ── Product specification ──────────────────────────────────────────────────────
 
@@ -133,49 +130,34 @@ def run_image_agent(title: str, excerpt: str) -> str:
 
     prompt = _build_prompt(title, scene, lighting, surface, include_product)
 
-    logger.info("[image] calling Gemini model=%s mood=%s scene=%s", _MODEL, mood, scene_key)
+    logger.info("[image] calling Imagen 3 mood=%s scene=%s", mood, scene_key)
 
     try:
-        response = _gemini().models.generate_content(
+        response = _gemini().models.generate_images(
             model=_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_modalities=["IMAGE", "TEXT"],
+            prompt=prompt,
+            config=types.GenerateImagesConfig(
+                number_of_images=1,
+                aspect_ratio="16:9",
+                safety_filter_level="BLOCK_ONLY_HIGH",
             ),
         )
     except Exception as exc:
-        logger.error("[image] Gemini API exception: %s: %s", type(exc).__name__, exc)
+        logger.error("[image] Imagen API exception: %s: %s", type(exc).__name__, exc)
         raise
 
-    # Log full response structure for debugging
-    candidates = response.candidates or []
-    logger.info("[image] candidates=%d", len(candidates))
-    for ci, candidate in enumerate(candidates):
-        finish = getattr(candidate, "finish_reason", None)
-        parts = candidate.content.parts if candidate.content else []
-        logger.info("[image] candidate[%d] finish_reason=%s parts=%d", ci, finish, len(parts or []))
-        for pi, part in enumerate(parts or []):
-            has_inline = part.inline_data is not None
-            text_preview = repr(part.text[:80]) if getattr(part, "text", None) else None
-            logger.info("[image] candidate[%d] part[%d] inline_data=%s text=%s", ci, pi, has_inline, text_preview)
+    generated = response.generated_images or []
+    logger.info("[image] generated_images=%d", len(generated))
 
-    # Extract the first image part from the response
-    image_bytes: bytes | None = None
-    mime_type = "image/png"
-    for candidate in candidates:
-        for part in (candidate.content.parts if candidate.content else []) or []:
-            if part.inline_data is not None:
-                image_bytes = part.inline_data.data
-                mime_type = part.inline_data.mime_type or "image/png"
-                logger.info("[image] found image inline_data mime=%s bytes=%d", mime_type, len(image_bytes) if image_bytes else 0)
-                break
-        if image_bytes:
-            break
+    if not generated:
+        raise RuntimeError("Image agent: no image returned from Imagen 3")
 
+    image_bytes = generated[0].image.image_bytes
     if not image_bytes:
-        raise RuntimeError("Image agent: no image returned from Gemini")
+        raise RuntimeError("Image agent: empty image bytes from Imagen 3")
 
-    return upload_image(image_bytes, mime_type)
+    logger.info("[image] image_bytes=%d", len(image_bytes))
+    return upload_image(image_bytes, "image/png")
 
 
 def _build_prompt(
