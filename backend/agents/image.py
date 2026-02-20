@@ -12,7 +12,7 @@ from services.upload_api import upload_image
 
 logger = logging.getLogger(__name__)
 
-_MODEL = "gemini-2.0-flash-exp"
+_MODEL = "gemini-2.0-flash-preview-image-generation"
 _client: genai.Client | None = None
 
 
