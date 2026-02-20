@@ -5,25 +5,24 @@ import logging
 import os
 import random
 import re
-
 import base64
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 from services.upload_api import upload_image
 
 logger = logging.getLogger(__name__)
 
-_MODEL = "gemini-2.0-flash-preview-image-generation"
-_configured = False
+_MODEL = "gemini-2.0-flash-exp"
+_client: genai.Client | None = None
 
 
-def _get_model() -> genai.GenerativeModel:
-    global _configured
-    if not _configured:
-        genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-        _configured = True
-    return genai.GenerativeModel(_MODEL)
+def _get_client() -> genai.Client:
+    global _client
+    if _client is None:
+        _client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    return _client
 
 # ── Product specification ──────────────────────────────────────────────────────
 
@@ -134,10 +133,11 @@ def run_image_agent(title: str, excerpt: str) -> str:
     logger.info("[image] calling Gemini model=%s mood=%s scene=%s", _MODEL, mood, scene_key)
 
     try:
-        model = _get_model()
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.types.GenerationConfig(
+        client = _get_client()
+        response = client.models.generate_content(
+            model=_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
                 response_modalities=["IMAGE", "TEXT"],
             ),
         )
