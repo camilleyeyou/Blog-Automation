@@ -18,7 +18,10 @@ _client: genai.Client | None = None
 def _gemini() -> genai.Client:
     global _client
     if _client is None:
-        _client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+        _client = genai.Client(
+            api_key=os.environ["GEMINI_API_KEY"],
+            http_options={"api_version": "v1alpha"},
+        )
     return _client
 
 
