@@ -11,20 +11,8 @@ function getAuthHeaders(): HeadersInit {
   return { "x-dashboard-password": pw, "Content-Type": "application/json" };
 }
 
-// Common IANA timezone options
-const TIMEZONES = [
-  { label: "UTC",                     value: "UTC" },
-  { label: "Eastern  (New York)",     value: "America/New_York" },
-  { label: "Central  (Chicago)",      value: "America/Chicago" },
-  { label: "Mountain (Denver)",       value: "America/Denver" },
-  { label: "Pacific  (Los Angeles)",  value: "America/Los_Angeles" },
-  { label: "London",                  value: "Europe/London" },
-  { label: "Paris / Berlin",          value: "Europe/Paris" },
-  { label: "Dubai",                   value: "Asia/Dubai" },
-  { label: "Mumbai",                  value: "Asia/Kolkata" },
-  { label: "Tokyo",                   value: "Asia/Tokyo" },
-  { label: "Sydney",                  value: "Australia/Sydney" },
-];
+/** Fixed cron times — defined in vercel.json, Hobby plan allows once-per-day expressions */
+const CRON_TIMES_UTC = ["06:00", "12:00", "18:00"];
 
 interface ScheduleData {
   active: boolean;
@@ -46,28 +34,10 @@ function Toast({ message, ok }: { message: string; ok: boolean }) {
   );
 }
 
-function getLocalTime(timezone: string): string {
-  try {
-    return new Intl.DateTimeFormat("en-US", {
-      timeZone: timezone,
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    }).format(new Date());
-  } catch {
-    return "";
-  }
-}
-
 export default function SchedulePage() {
   const [schedule, setSchedule] = useState<ScheduleData | null>(null);
-  const [editTimes, setEditTimes] = useState<string[]>(["06:00", "12:00", "18:00"]);
-  const [editTimezone, setEditTimezone] = useState("UTC");
   const [lastLog, setLastLog] = useState<AutomationLog | null>(null);
-  const [localTime, setLocalTime] = useState("");
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [running, setRunning] = useState(false);
   const [replenishing, setReplenishing] = useState(false);
@@ -88,8 +58,6 @@ export default function SchedulePage() {
       if (schedRes.ok) {
         const data = (await schedRes.json()) as ScheduleData;
         setSchedule(data);
-        setEditTimes(data.run_times);
-        setEditTimezone(data.timezone);
       }
       if (logRes.ok) {
         const logData = (await logRes.json()) as { logs: AutomationLog[] };
@@ -105,13 +73,6 @@ export default function SchedulePage() {
   useEffect(() => {
     void fetchAll();
   }, [fetchAll]);
-
-  // Live clock in the configured timezone
-  useEffect(() => {
-    setLocalTime(getLocalTime(editTimezone));
-    const id = setInterval(() => setLocalTime(getLocalTime(editTimezone)), 1000);
-    return () => clearInterval(id);
-  }, [editTimezone]);
 
   async function toggleScheduler() {
     if (!schedule) return;
@@ -130,28 +91,6 @@ export default function SchedulePage() {
       showToast("Failed to update scheduler", false);
     } finally {
       setToggling(false);
-    }
-  }
-
-  async function saveSchedule() {
-    setSaving(true);
-    try {
-      const res = await fetch("/api/schedule", {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ run_times: editTimes, timezone: editTimezone }),
-      });
-      if (!res.ok) {
-        const err = (await res.json()) as { error?: string };
-        throw new Error(err.error ?? "Failed to save");
-      }
-      const data = (await res.json()) as ScheduleData;
-      setSchedule(data);
-      showToast("Schedule saved", true);
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : "Save failed", false);
-    } finally {
-      setSaving(false);
     }
   }
 
@@ -190,25 +129,6 @@ export default function SchedulePage() {
     }
   }
 
-  function updateTime(index: number, value: string) {
-    const next = [...editTimes];
-    next[index] = value;
-    setEditTimes(next);
-  }
-
-  function addTime() {
-    if (editTimes.length < 5) setEditTimes([...editTimes, "09:00"]);
-  }
-
-  function removeTime(index: number) {
-    if (editTimes.length > 1) setEditTimes(editTimes.filter((_, i) => i !== index));
-  }
-
-  const isDirty =
-    schedule !== null &&
-    (JSON.stringify(editTimes.slice().sort()) !== JSON.stringify(schedule.run_times.slice().sort()) ||
-      editTimezone !== schedule.timezone);
-
   const logStatusColor: Record<string, string> = {
     success: "bg-emerald-500/10 text-emerald-400 ring-emerald-500/30",
     draft:   "bg-amber/10 text-amber ring-amber/30",
@@ -220,7 +140,7 @@ export default function SchedulePage() {
     <div className="space-y-5">
       <div>
         <h1 className="text-xl font-semibold text-white">Schedule</h1>
-        <p className="mt-1 text-sm text-muted">Manage automation schedule, run times, and timezone</p>
+        <p className="mt-1 text-sm text-muted">Manage the automation scheduler</p>
       </div>
 
       {/* Scheduler toggle */}
@@ -246,8 +166,8 @@ export default function SchedulePage() {
                 {loading
                   ? "Loading…"
                   : schedule?.active
-                  ? "Running — pipeline fires on the configured schedule"
-                  : "Stopped — cron triggers are ignored"}
+                  ? "Running — pipeline fires 3× daily at the times below"
+                  : "Stopped — cron triggers are ignored until restarted"}
               </div>
             </div>
           </div>
@@ -266,89 +186,44 @@ export default function SchedulePage() {
         </div>
       </div>
 
-      {/* Run time editor */}
+      {/* Cron schedule (read-only) */}
       <div className="rounded-xl border border-edge bg-surface p-6">
-        <div className="mb-5 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber/10">
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#f5a623"
-                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <polyline points="12 6 12 12 16 14" />
-              </svg>
+        <div className="mb-4 flex items-center gap-2.5">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber/10">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#f5a623"
+              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+              <line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" />
+              <line x1="3" y1="10" x2="21" y2="10" />
+            </svg>
+          </div>
+          <span className="font-semibold text-white">Cron Schedule</span>
+        </div>
+
+        <div className="divide-y divide-edge overflow-hidden rounded-lg border border-edge">
+          <div className="flex items-center justify-between bg-raised/40 px-4 py-3 text-sm">
+            <span className="text-muted">Frequency</span>
+            <span className="font-medium text-white">3 runs per day</span>
+          </div>
+          {CRON_TIMES_UTC.map((t, i) => (
+            <div key={t} className="flex items-center justify-between bg-raised/40 px-4 py-3 text-sm">
+              <span className="text-muted">Run {i + 1}</span>
+              <span className="font-mono text-white">{t} UTC</span>
             </div>
-            <span className="font-semibold text-white">Run Schedule</span>
-          </div>
-          {/* Live clock */}
-          <div className="text-right">
-            <div className="font-mono text-sm text-white">{localTime || "—"}</div>
-            <div className="text-xs text-muted">{editTimezone}</div>
+          ))}
+          <div className="flex items-center justify-between bg-raised/40 px-4 py-3 text-sm">
+            <span className="text-muted">Timezone</span>
+            <span className="font-medium text-white">UTC</span>
           </div>
         </div>
 
-        {/* Timezone selector */}
-        <div className="mb-4">
-          <label className="mb-1.5 block text-xs text-muted">Timezone</label>
-          <select
-            value={editTimezone}
-            onChange={(e) => setEditTimezone(e.target.value)}
-            className="w-full rounded-lg border border-edge bg-raised px-3 py-2.5 text-sm text-white transition-colors focus:border-amber/50 focus:outline-none focus:ring-2 focus:ring-amber/10"
-          >
-            {TIMEZONES.map((tz) => (
-              <option key={tz.value} value={tz.value} className="bg-raised">
-                {tz.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Run times */}
-        <div className="mb-5">
-          <label className="mb-1.5 block text-xs text-muted">
-            Run times — 24-hour format, in the timezone above
-          </label>
-          <div className="space-y-2">
-            {editTimes.map((t, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <input
-                  type="time"
-                  value={t}
-                  onChange={(e) => updateTime(i, e.target.value)}
-                  className="flex-1 rounded-lg border border-edge bg-raised px-3 py-2.5 text-sm text-white transition-colors focus:border-amber/50 focus:outline-none focus:ring-2 focus:ring-amber/10"
-                />
-                {editTimes.length > 1 && (
-                  <button
-                    onClick={() => removeTime(i)}
-                    className="rounded-lg border border-edge px-3 py-2.5 text-xs text-muted transition-colors hover:border-red-500/30 hover:text-red-400"
-                  >
-                    Remove
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-          {editTimes.length < 5 && (
-            <button
-              onClick={addTime}
-              className="mt-2 text-xs text-amber transition-colors hover:text-amber/80"
-            >
-              + Add run time
-            </button>
-          )}
-        </div>
-
-        <div className="flex items-center justify-between gap-4">
-          <p className="text-xs text-muted">
-            Cron fires every hour — the pipeline only executes at the times configured above.
-          </p>
-          <button
-            onClick={saveSchedule}
-            disabled={saving || !isDirty}
-            className="shrink-0 rounded-lg bg-amber px-4 py-2 text-sm font-semibold text-bg transition-colors hover:bg-amber/90 disabled:opacity-40"
-          >
-            {saving ? "Saving…" : "Save Schedule"}
-          </button>
-        </div>
+        <p className="mt-4 text-xs text-muted">
+          Run times are defined in{" "}
+          <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-amber">vercel.json</code>{" "}
+          and managed by Vercel Cron Jobs. To change times, update{" "}
+          <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-amber">vercel.json</code>{" "}
+          and redeploy. Use <span className="text-white">Stop Scheduler</span> above to pause without changing the cron config.
+        </p>
       </div>
 
       {/* Last pipeline run */}
@@ -430,7 +305,7 @@ export default function SchedulePage() {
           One-time Supabase setup required
         </p>
         <p className="mb-3 text-sm text-muted">
-          Run this in your Supabase SQL editor to enable scheduler settings:
+          Run this in your Supabase SQL editor to enable the scheduler toggle:
         </p>
         <pre className="overflow-x-auto rounded-lg bg-bg p-4 font-mono text-xs leading-relaxed text-white">{`CREATE TABLE IF NOT EXISTS app_settings (
   key TEXT PRIMARY KEY,
