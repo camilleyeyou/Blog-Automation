@@ -5,8 +5,6 @@ import logging
 import os
 import random
 import re
-import base64
-
 from google import genai
 from google.genai import types
 
@@ -14,7 +12,7 @@ from services.upload_api import upload_image
 
 logger = logging.getLogger(__name__)
 
-_MODEL = "gemini-2.0-flash-exp"
+_MODEL = "imagen-3.0-generate-001"
 _client: genai.Client | None = None
 
 
@@ -130,41 +128,29 @@ def run_image_agent(title: str, excerpt: str) -> str:
 
     prompt = _build_prompt(title, scene, lighting, surface, include_product)
 
-    logger.info("[image] calling Gemini model=%s mood=%s scene=%s", _MODEL, mood, scene_key)
+    logger.info("[image] calling Imagen model=%s mood=%s scene=%s", _MODEL, mood, scene_key)
 
     try:
         client = _get_client()
-        response = client.models.generate_content(
+        response = client.models.generate_images(
             model=_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_modalities=["IMAGE", "TEXT"],
+            prompt=prompt,
+            config=types.GenerateImagesConfig(
+                number_of_images=1,
+                aspect_ratio="16:9",
             ),
         )
     except Exception as exc:
         logger.error("[image] Gemini API exception: %s: %s", type(exc).__name__, exc)
         raise
 
-    # Extract image bytes from response parts
-    image_bytes: bytes | None = None
-    mime_type = "image/png"
-
-    for candidate in response.candidates or []:
-        for part in (candidate.content.parts if candidate.content else []) or []:
-            inline = getattr(part, "inline_data", None)
-            if inline and inline.data:
-                raw = inline.data
-                # SDK may return raw bytes or base64 string
-                image_bytes = raw if isinstance(raw, bytes) else base64.b64decode(raw)
-                mime_type = inline.mime_type or "image/png"
-                logger.info("[image] found image mime=%s bytes=%d", mime_type, len(image_bytes))
-                break
-        if image_bytes:
-            break
-
-    if not image_bytes:
-        logger.error("[image] no inline_data in response — candidates=%d", len(response.candidates or []))
+    if not response.generated_images:
+        logger.error("[image] no images returned from Imagen")
         raise RuntimeError("Image agent: no image returned from Gemini")
+
+    image_bytes: bytes = response.generated_images[0].image.image_bytes
+    mime_type = "image/png"
+    logger.info("[image] found image bytes=%d", len(image_bytes))
 
     return upload_image(image_bytes, mime_type)
 
