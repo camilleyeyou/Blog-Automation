@@ -72,9 +72,17 @@ def _load_schedule_from_db() -> None:
 def _check_api_key(request: Request) -> None:
     expected = os.environ.get("RAILWAY_API_KEY")
     if not expected:
-        return  # No key configured — open (dev mode)
+        logger.warning("[auth] RAILWAY_API_KEY not set — allowing all requests")
+        return
     provided = request.headers.get("x-api-key")
     if provided != expected:
+        preview = (provided[:6] + "…") if provided else "<missing>"
+        logger.warning(
+            "[auth] 401 — key mismatch. received=%s (len=%d) expected_len=%d",
+            preview,
+            len(provided) if provided else 0,
+            len(expected),
+        )
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
