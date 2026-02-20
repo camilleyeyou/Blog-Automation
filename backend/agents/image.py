@@ -12,18 +12,15 @@ from services.upload_api import upload_image
 
 logger = logging.getLogger(__name__)
 
-_MODEL = "gemini-2.0-flash-exp"
+_MODEL = "gemini-2.0-flash-preview-image-generation"
 _client: genai.Client | None = None
 
 
 def _get_client() -> genai.Client:
     global _client
     if _client is None:
-        # v1alpha is required for native image generation via response_modalities
-        _client = genai.Client(
-            api_key=os.environ["GEMINI_API_KEY"],
-            http_options={"api_version": "v1alpha"},
-        )
+        # gemini-2.0-flash-preview-image-generation uses v1beta (SDK default)
+        _client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
     return _client
 
 
