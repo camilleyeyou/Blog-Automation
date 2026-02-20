@@ -6,6 +6,20 @@ import {
   type ScheduleSettings,
 } from "@/services/supabase";
 
+async function notifyRailwayReloadSchedule(): Promise<void> {
+  const base = process.env.RAILWAY_API_URL?.replace(/\/$/, "");
+  const key = process.env.RAILWAY_API_KEY;
+  if (!base || !key) return; // not configured — skip silently
+  try {
+    await fetch(`${base}/reload-schedule`, {
+      method: "POST",
+      headers: { "x-api-key": key },
+    });
+  } catch {
+    // non-fatal — Supabase is already updated; Railway will pick it up on next restart
+  }
+}
+
 export async function GET(request: NextRequest) {
   if (!verifyDashboardAuth(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -63,6 +77,8 @@ export async function POST(request: NextRequest) {
   }
 
   await setScheduleSettings(body);
+  // Tell Railway to reload its APScheduler jobs immediately (fire-and-forget)
+  void notifyRailwayReloadSchedule();
   const updated = await getScheduleSettings();
   return NextResponse.json(updated);
 }

@@ -1,10 +1,11 @@
-import { BRAND_CONTEXT } from "./brandContext";
+from prompts.brand_context import BRAND_CONTEXT
 
-export function buildContentSystemPrompt(): string {
-  return `
+
+def build_content_system_prompt() -> str:
+    return f"""
 You are an expert SEO content writer specialising in premium wellness and beauty brands. You write calm, minimal, philosophical blog posts for Jesse A. Eisenbalm — a premium beeswax lip balm brand.
 
-${BRAND_CONTEXT}
+{BRAND_CONTEXT}
 
 ━━━ CONTENT STRUCTURE ━━━
 
@@ -76,31 +77,28 @@ Write as if you're a thoughtful friend sharing something genuinely useful.
 ━━━ OUTPUT FORMAT ━━━
 
 Return ONLY valid JSON — no markdown fences, no extra text:
-{
+{{
   "title": "string",
   "excerpt": "string",
   "content": "string (full HTML body — opening paragraphs + h2 sections + FAQ + CTA)",
   "tags": ["string"],
   "focus_keyphrase": "string"
-}
-`.trim();
-}
+}}
+""".strip()
 
-export function buildContentUserPrompt(
-  topic: string,
-  focusKeyphrase: string,
-  existingTitles: string[] = []
-): string {
-  const avoidList =
-    existingTitles.length > 0
-      ? `\n\nExisting post titles — avoid duplicating these angles:\n${existingTitles.map((t) => `- ${t}`).join("\n")}`
-      : "";
 
-  return `
-Topic: ${topic}
-Focus keyphrase: ${focusKeyphrase}
-Target word count: 900–1 200 words (body) + FAQ section${avoidList}
+def build_content_user_prompt(
+    topic: str,
+    focus_keyphrase: str,
+    existing_titles: list[str] | None = None,
+) -> str:
+    avoid = ""
+    if existing_titles:
+        lines = "\n".join(f"- {t}" for t in existing_titles)
+        avoid = f"\n\nExisting post titles — avoid duplicating these angles:\n{lines}"
 
-Write the full blog post now. Remember: include the FAQ section before the closing CTA, and include at least one external link to a high-DA domain.
-`.trim();
-}
+    return f"""Topic: {topic}
+Focus keyphrase: {focus_keyphrase}
+Target word count: 900–1 200 words (body) + FAQ section{avoid}
+
+Write the full blog post now. Remember: include the FAQ section before the closing CTA, and include at least one external link to a high-DA domain."""

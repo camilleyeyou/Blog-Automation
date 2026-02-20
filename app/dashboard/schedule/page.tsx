@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { AutomationLog } from "@/services/supabase";
 
 function getAuthHeaders(): HeadersInit {
@@ -11,8 +11,19 @@ function getAuthHeaders(): HeadersInit {
   return { "x-dashboard-password": pw, "Content-Type": "application/json" };
 }
 
-/** Fixed cron times — defined in vercel.json, Hobby plan allows once-per-day expressions */
-const CRON_TIMES_UTC = ["06:00", "12:00", "18:00"];
+const TIMEZONES = [
+  { label: "UTC",                    value: "UTC" },
+  { label: "New York (ET)",          value: "America/New_York" },
+  { label: "Chicago (CT)",           value: "America/Chicago" },
+  { label: "Denver (MT)",            value: "America/Denver" },
+  { label: "Los Angeles (PT)",       value: "America/Los_Angeles" },
+  { label: "London (GMT/BST)",       value: "Europe/London" },
+  { label: "Paris (CET/CEST)",       value: "Europe/Paris" },
+  { label: "Dubai (GST)",            value: "Asia/Dubai" },
+  { label: "Singapore (SGT)",        value: "Asia/Singapore" },
+  { label: "Tokyo (JST)",            value: "Asia/Tokyo" },
+  { label: "Sydney (AEST/AEDT)",     value: "Australia/Sydney" },
+];
 
 interface ScheduleData {
   active: boolean;
@@ -34,6 +45,35 @@ function Toast({ message, ok }: { message: string; ok: boolean }) {
   );
 }
 
+function LiveClock({ timezone }: { timezone: string }) {
+  const [time, setTime] = useState("");
+
+  useEffect(() => {
+    function tick() {
+      try {
+        setTime(
+          new Date().toLocaleTimeString("en-US", {
+            timeZone: timezone,
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: false,
+          })
+        );
+      } catch {
+        setTime("--:--:--");
+      }
+    }
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [timezone]);
+
+  return (
+    <span className="font-mono text-white tabular-nums">{time}</span>
+  );
+}
+
 export default function SchedulePage() {
   const [schedule, setSchedule] = useState<ScheduleData | null>(null);
   const [lastLog, setLastLog] = useState<AutomationLog | null>(null);
@@ -41,7 +81,13 @@ export default function SchedulePage() {
   const [toggling, setToggling] = useState(false);
   const [running, setRunning] = useState(false);
   const [replenishing, setReplenishing] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ message: string; ok: boolean } | null>(null);
+
+  // Editable schedule state (local before save)
+  const [editTimes, setEditTimes] = useState<string[]>([]);
+  const [editTz, setEditTz] = useState("UTC");
+  const dirty = useRef(false);
 
   function showToast(message: string, ok: boolean) {
     setToast({ message, ok });
@@ -58,6 +104,10 @@ export default function SchedulePage() {
       if (schedRes.ok) {
         const data = (await schedRes.json()) as ScheduleData;
         setSchedule(data);
+        if (!dirty.current) {
+          setEditTimes(data.run_times);
+          setEditTz(data.timezone);
+        }
       }
       if (logRes.ok) {
         const logData = (await logRes.json()) as { logs: AutomationLog[] };
@@ -91,6 +141,31 @@ export default function SchedulePage() {
       showToast("Failed to update scheduler", false);
     } finally {
       setToggling(false);
+    }
+  }
+
+  async function saveSchedule() {
+    setSaving(true);
+    dirty.current = false;
+    try {
+      const res = await fetch("/api/schedule", {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ run_times: editTimes, timezone: editTz }),
+      });
+      if (!res.ok) {
+        const err = (await res.json()) as { error?: string };
+        throw new Error(err.error ?? "Save failed");
+      }
+      const data = (await res.json()) as ScheduleData;
+      setSchedule(data);
+      setEditTimes(data.run_times);
+      setEditTz(data.timezone);
+      showToast("Schedule saved — Railway notified", true);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Save failed", false);
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -129,12 +204,34 @@ export default function SchedulePage() {
     }
   }
 
+  function addTime() {
+    if (editTimes.length >= 5) return;
+    dirty.current = true;
+    setEditTimes((prev) => [...prev, "09:00"]);
+  }
+
+  function removeTime(index: number) {
+    if (editTimes.length <= 1) return;
+    dirty.current = true;
+    setEditTimes((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function updateTime(index: number, value: string) {
+    dirty.current = true;
+    setEditTimes((prev) => prev.map((t, i) => (i === index ? value : t)));
+  }
+
   const logStatusColor: Record<string, string> = {
     success: "bg-emerald-500/10 text-emerald-400 ring-emerald-500/30",
     draft:   "bg-amber/10 text-amber ring-amber/30",
     held:    "bg-orange-500/10 text-orange-400 ring-orange-500/30",
     error:   "bg-red-500/10 text-red-400 ring-red-500/30",
   };
+
+  const hasUnsavedChanges =
+    schedule !== null &&
+    (JSON.stringify(editTimes) !== JSON.stringify(schedule.run_times) ||
+      editTz !== schedule.timezone);
 
   return (
     <div className="space-y-5">
@@ -166,8 +263,8 @@ export default function SchedulePage() {
                 {loading
                   ? "Loading…"
                   : schedule?.active
-                  ? "Running — pipeline fires 3× daily at the times below"
-                  : "Stopped — cron triggers are ignored until restarted"}
+                  ? `Running — ${schedule.run_times.length}× daily`
+                  : "Stopped — pipeline will not fire until restarted"}
               </div>
             </div>
           </div>
@@ -186,44 +283,93 @@ export default function SchedulePage() {
         </div>
       </div>
 
-      {/* Cron schedule (read-only) */}
+      {/* Schedule editor */}
       <div className="rounded-xl border border-edge bg-surface p-6">
-        <div className="mb-4 flex items-center gap-2.5">
+        <div className="mb-5 flex items-center gap-2.5">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber/10">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#f5a623"
               strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-              <line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" />
-              <line x1="3" y1="10" x2="21" y2="10" />
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
             </svg>
           </div>
-          <span className="font-semibold text-white">Cron Schedule</span>
-        </div>
-
-        <div className="divide-y divide-edge overflow-hidden rounded-lg border border-edge">
-          <div className="flex items-center justify-between bg-raised/40 px-4 py-3 text-sm">
-            <span className="text-muted">Frequency</span>
-            <span className="font-medium text-white">3 runs per day</span>
+          <div className="flex-1">
+            <span className="font-semibold text-white">Run Schedule</span>
           </div>
-          {CRON_TIMES_UTC.map((t, i) => (
-            <div key={t} className="flex items-center justify-between bg-raised/40 px-4 py-3 text-sm">
-              <span className="text-muted">Run {i + 1}</span>
-              <span className="font-mono text-white">{t} UTC</span>
-            </div>
-          ))}
-          <div className="flex items-center justify-between bg-raised/40 px-4 py-3 text-sm">
-            <span className="text-muted">Timezone</span>
-            <span className="font-medium text-white">UTC</span>
+          <div className="flex items-center gap-2 text-sm text-muted">
+            <span>Now in {TIMEZONES.find((z) => z.value === editTz)?.label ?? editTz}:</span>
+            <LiveClock timezone={editTz} />
           </div>
         </div>
 
-        <p className="mt-4 text-xs text-muted">
-          Run times are defined in{" "}
-          <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-amber">vercel.json</code>{" "}
-          and managed by Vercel Cron Jobs. To change times, update{" "}
-          <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-amber">vercel.json</code>{" "}
-          and redeploy. Use <span className="text-white">Stop Scheduler</span> above to pause without changing the cron config.
-        </p>
+        {/* Timezone */}
+        <div className="mb-4">
+          <label className="mb-1.5 block text-xs font-medium text-muted">Timezone</label>
+          <select
+            value={editTz}
+            onChange={(e) => { dirty.current = true; setEditTz(e.target.value); }}
+            className="w-full rounded-lg border border-edge bg-raised px-3 py-2 text-sm text-white focus:border-amber/50 focus:outline-none"
+          >
+            {TIMEZONES.map((tz) => (
+              <option key={tz.value} value={tz.value}>{tz.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Run times */}
+        <div className="mb-5">
+          <label className="mb-1.5 block text-xs font-medium text-muted">
+            Run Times ({editTimes.length}/5)
+          </label>
+          <div className="space-y-2">
+            {editTimes.map((t, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <input
+                  type="time"
+                  value={t}
+                  onChange={(e) => updateTime(i, e.target.value)}
+                  className="flex-1 rounded-lg border border-edge bg-raised px-3 py-2 font-mono text-sm text-white focus:border-amber/50 focus:outline-none"
+                />
+                <button
+                  onClick={() => removeTime(i)}
+                  disabled={editTimes.length <= 1}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-edge bg-raised text-muted transition-colors hover:border-red-500/30 hover:text-red-400 disabled:opacity-30"
+                  title="Remove"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    strokeWidth="2.5" strokeLinecap="round">
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {editTimes.length < 5 && (
+            <button
+              onClick={addTime}
+              className="mt-2 flex items-center gap-1.5 text-xs text-muted transition-colors hover:text-amber"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                strokeWidth="2.5" strokeLinecap="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              Add run time
+            </button>
+          )}
+        </div>
+
+        <button
+          onClick={saveSchedule}
+          disabled={saving || !hasUnsavedChanges}
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber px-4 py-2.5 text-sm font-semibold text-bg transition-colors hover:bg-amber/90 disabled:opacity-40"
+        >
+          {saving ? "Saving…" : "Save Schedule"}
+          {hasUnsavedChanges && !saving && (
+            <span className="rounded-full bg-bg/20 px-1.5 py-0.5 text-xs">unsaved</span>
+          )}
+        </button>
       </div>
 
       {/* Last pipeline run */}
@@ -297,25 +443,6 @@ export default function SchedulePage() {
             {replenishing ? "Generating topics…" : "Replenish Queue"}
           </button>
         </div>
-      </div>
-
-      {/* Supabase migration note */}
-      <div className="rounded-xl border border-amber/20 bg-amber/5 p-5">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-amber">
-          One-time Supabase setup required
-        </p>
-        <p className="mb-3 text-sm text-muted">
-          Run this in your Supabase SQL editor to enable the scheduler toggle:
-        </p>
-        <pre className="overflow-x-auto rounded-lg bg-bg p-4 font-mono text-xs leading-relaxed text-white">{`CREATE TABLE IF NOT EXISTS app_settings (
-  key TEXT PRIMARY KEY,
-  value JSONB NOT NULL,
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
-
-INSERT INTO app_settings (key, value)
-VALUES ('scheduler_active', 'true')
-ON CONFLICT (key) DO NOTHING;`}</pre>
       </div>
 
       {toast && <Toast message={toast.message} ok={toast.ok} />}
