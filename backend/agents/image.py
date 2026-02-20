@@ -1,4 +1,4 @@
-"""Image agent — Gemini image generation + upload."""
+"""Image agent — Gemini Imagen image generation + upload."""
 from __future__ import annotations
 
 import logging
@@ -12,19 +12,16 @@ from services.upload_api import upload_image
 
 logger = logging.getLogger(__name__)
 
-_MODEL = "gemini-2.0-flash-preview-image-generation"
+_MODEL = "imagen-3.0-generate-002"
 _client: genai.Client | None = None
 
 
 def _get_client() -> genai.Client:
     global _client
     if _client is None:
-        # v1alpha is required for image generation via response_modalities
-        _client = genai.Client(
-            api_key=os.environ["GEMINI_API_KEY"],
-            http_options={"api_version": "v1alpha"},
-        )
+        _client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
     return _client
+
 
 # ── Product specification ──────────────────────────────────────────────────────
 
@@ -122,7 +119,7 @@ def _detect_mood(title: str, excerpt: str) -> str:
 # ── Agent ──────────────────────────────────────────────────────────────────────
 
 def run_image_agent(title: str, excerpt: str) -> str:
-    """Generate a cover image with Gemini and return its public URL."""
+    """Generate a cover image with Imagen 3 and return its public URL."""
     mood = _detect_mood(title, excerpt)
     scene_key = random.choice(_SCENE_MAP[mood])
     scene = random.choice(_SCENES[scene_key])
@@ -132,42 +129,27 @@ def run_image_agent(title: str, excerpt: str) -> str:
 
     prompt = _build_prompt(title, scene, lighting, surface, include_product)
 
-    logger.info("[image] calling Gemini model=%s mood=%s scene=%s", _MODEL, mood, scene_key)
+    logger.info("[image] calling Imagen model=%s mood=%s scene=%s", _MODEL, mood, scene_key)
 
-    try:
-        client = _get_client()
-        response = client.models.generate_content(
-            model=_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_modalities=["IMAGE", "TEXT"],
-            ),
-        )
-    except Exception as exc:
-        logger.error("[image] Gemini API exception: %s: %s", type(exc).__name__, exc)
-        raise
+    client = _get_client()
+    response = client.models.generate_images(
+        model=_MODEL,
+        prompt=prompt,
+        config=types.GenerateImagesConfig(
+            number_of_images=1,
+            aspect_ratio="16:9",
+        ),
+    )
 
-    # Extract image bytes from response parts
-    image_bytes: bytes | None = None
-    mime_type = "image/png"
+    if not response.generated_images:
+        raise RuntimeError("Image agent: no images returned from Imagen")
 
-    for candidate in response.candidates or []:
-        for part in (candidate.content.parts if candidate.content else []) or []:
-            inline = getattr(part, "inline_data", None)
-            if inline and inline.data:
-                raw = inline.data
-                image_bytes = raw if isinstance(raw, bytes) else bytes(raw)
-                mime_type = inline.mime_type or "image/png"
-                logger.info("[image] found image mime=%s bytes=%d", mime_type, len(image_bytes))
-                break
-        if image_bytes:
-            break
-
+    image_bytes = response.generated_images[0].image.image_bytes
     if not image_bytes:
-        logger.error("[image] no inline_data in response — candidates=%d", len(response.candidates or []))
-        raise RuntimeError("Image agent: no image returned from Gemini")
+        raise RuntimeError("Image agent: empty image_bytes from Imagen")
 
-    return upload_image(image_bytes, mime_type)
+    logger.info("[image] received image bytes=%d", len(image_bytes))
+    return upload_image(image_bytes, "image/png")
 
 
 def _build_prompt(
