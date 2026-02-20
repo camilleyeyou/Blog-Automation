@@ -6,23 +6,24 @@ import os
 import random
 import re
 
-from google import genai
-from google.genai import types
+import base64
+
+import google.generativeai as genai
 
 from services.upload_api import upload_image
 
 logger = logging.getLogger(__name__)
-_client: genai.Client | None = None
+
+_MODEL = "gemini-2.0-flash-preview-image-generation"
+_configured = False
 
 
-def _gemini() -> genai.Client:
-    global _client
-    if _client is None:
-        _client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-    return _client
-
-
-_MODEL = "imagen-3.0-generate-001"
+def _get_model() -> genai.GenerativeModel:
+    global _configured
+    if not _configured:
+        genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+        _configured = True
+    return genai.GenerativeModel(_MODEL)
 
 # ── Product specification ──────────────────────────────────────────────────────
 
@@ -130,34 +131,42 @@ def run_image_agent(title: str, excerpt: str) -> str:
 
     prompt = _build_prompt(title, scene, lighting, surface, include_product)
 
-    logger.info("[image] calling Imagen 3 mood=%s scene=%s", mood, scene_key)
+    logger.info("[image] calling Gemini model=%s mood=%s scene=%s", _MODEL, mood, scene_key)
 
     try:
-        response = _gemini().models.generate_images(
-            model=_MODEL,
-            prompt=prompt,
-            config=types.GenerateImagesConfig(
-                number_of_images=1,
-                aspect_ratio="16:9",
-                safety_filter_level="BLOCK_ONLY_HIGH",
+        model = _get_model()
+        response = model.generate_content(
+            prompt,
+            generation_config=genai.types.GenerationConfig(
+                response_modalities=["IMAGE", "TEXT"],
             ),
         )
     except Exception as exc:
-        logger.error("[image] Imagen API exception: %s: %s", type(exc).__name__, exc)
+        logger.error("[image] Gemini API exception: %s: %s", type(exc).__name__, exc)
         raise
 
-    generated = response.generated_images or []
-    logger.info("[image] generated_images=%d", len(generated))
+    # Extract image bytes from response parts
+    image_bytes: bytes | None = None
+    mime_type = "image/png"
 
-    if not generated:
-        raise RuntimeError("Image agent: no image returned from Imagen 3")
+    for candidate in response.candidates or []:
+        for part in (candidate.content.parts if candidate.content else []) or []:
+            inline = getattr(part, "inline_data", None)
+            if inline and inline.data:
+                raw = inline.data
+                # SDK may return raw bytes or base64 string
+                image_bytes = raw if isinstance(raw, bytes) else base64.b64decode(raw)
+                mime_type = inline.mime_type or "image/png"
+                logger.info("[image] found image mime=%s bytes=%d", mime_type, len(image_bytes))
+                break
+        if image_bytes:
+            break
 
-    image_bytes = generated[0].image.image_bytes
     if not image_bytes:
-        raise RuntimeError("Image agent: empty image bytes from Imagen 3")
+        logger.error("[image] no inline_data in response — candidates=%d", len(response.candidates or []))
+        raise RuntimeError("Image agent: no image returned from Gemini")
 
-    logger.info("[image] image_bytes=%d", len(image_bytes))
-    return upload_image(image_bytes, "image/png")
+    return upload_image(image_bytes, mime_type)
 
 
 def _build_prompt(
