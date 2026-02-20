@@ -33,19 +33,6 @@ class QueueItem:
 
 
 @dataclass
-class AutomationLog:
-    id: str
-    queue_id: str | None
-    post_id: str | None
-    status: str
-    confidence_score: int | None
-    seo_checks_passed: int | None
-    revision_notes: str | None
-    error_message: str | None
-    created_at: str
-
-
-@dataclass
 class ScheduleSettings:
     active: bool
     run_times: list[str]
@@ -110,13 +97,11 @@ def add_queue_item(
             "focus_keyphrase": focus_keyphrase,
             "keywords": keywords,
         })
-        .select()
-        .single()
         .execute()
     )
     if not res.data:
         raise RuntimeError("Failed to add queue item")
-    return _row_to_queue_item(res.data)
+    return _row_to_queue_item(res.data[0])
 
 
 def reset_in_progress_items() -> None:
@@ -134,26 +119,16 @@ def insert_log(
     seo_checks_passed: int | None,
     revision_notes: str | None,
     error_message: str | None,
-) -> AutomationLog:
-    res = (
-        _sb()
-        .from_("automation_logs")
-        .insert({
-            "queue_id": queue_id,
-            "post_id": post_id,
-            "status": status,
-            "confidence_score": confidence_score,
-            "seo_checks_passed": seo_checks_passed,
-            "revision_notes": revision_notes,
-            "error_message": error_message,
-        })
-        .select()
-        .single()
-        .execute()
-    )
-    if not res.data:
-        raise RuntimeError("Failed to insert log")
-    return _row_to_log(res.data)
+) -> None:
+    _sb().from_("automation_logs").insert({
+        "queue_id": queue_id,
+        "post_id": post_id,
+        "status": status,
+        "confidence_score": confidence_score,
+        "seo_checks_passed": seo_checks_passed,
+        "revision_notes": revision_notes,
+        "error_message": error_message,
+    }).execute()
 
 
 # ── Schedule settings ──────────────────────────────────────────────────────────
@@ -201,15 +176,3 @@ def _row_to_queue_item(r: dict[str, Any]) -> QueueItem:
     )
 
 
-def _row_to_log(r: dict[str, Any]) -> AutomationLog:
-    return AutomationLog(
-        id=r["id"],
-        queue_id=r.get("queue_id"),
-        post_id=r.get("post_id"),
-        status=r["status"],
-        confidence_score=r.get("confidence_score"),
-        seo_checks_passed=r.get("seo_checks_passed"),
-        revision_notes=r.get("revision_notes"),
-        error_message=r.get("error_message"),
-        created_at=r["created_at"],
-    )
