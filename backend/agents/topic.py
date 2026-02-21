@@ -30,36 +30,42 @@ class TopicSuggestion:
 # ── Content pillars ────────────────────────────────────────────────────────────
 
 _CONTENT_PILLARS = [
-    "ingredient_science — beeswax, honey, natural ingredients, research-backed benefits",
-    "ritual_mindfulness — slow living, intentional routines, presence, pause",
-    "premium_positioning — quality, craft, limited edition, artisan value",
-    "natural_education — sourcing, purity, certifications, ingredient transparency",
-    "lifestyle_intentionality — thoughtful consumption, human connection, anti-hustle",
+    "ingredient_science — beeswax barrier repair, TEWL prevention, petrolatum-free alternatives, bio-compatible occlusion, lip tissue biology",
+    "ritual_mindfulness — slow living, intentional routines, presence, pause, analog rituals, neurocosmetic grounding",
+    "digital_wellness_professional — digital fatigue, cognitive load, executive wellness, knowledge worker wellbeing, screen-time recovery, workplace mindfulness",
+    "lip_skinification — active ingredients, ceramides, lip barrier science, treating lips like facial skin, ingredient transparency",
+    "lifestyle_intentionality — thoughtful consumption, human connection, philanthropic brand values, limited edition craft, quality over quantity",
 ]
 
 # ── Keyword clusters ───────────────────────────────────────────────────────────
 
 _KEYWORD_CLUSTERS = [
-    # Ingredient science
-    "beeswax lip balm benefits", "beeswax properties skin", "beeswax vs petroleum jelly",
-    "natural lip balm ingredients", "beeswax moisturiser benefits", "honey lip treatment",
-    "organic beeswax skincare", "natural emollient for lips", "lip barrier repair",
-    # Lip care / product
-    "best natural lip balm", "hydrating lip balm", "lip balm for dry chapped lips",
-    "long lasting lip balm", "clean beauty lip care", "minimalist lip care",
-    "daily lip care routine", "winter lip care tips", "lip moisture retention",
+    # Ingredient science / lip biology
+    "beeswax lip barrier repair", "petrolatum-free lip balm", "beeswax vs petroleum jelly lips",
+    "transepidermal water loss lips", "TEWL lip care", "bio-compatible lip occlusion",
+    "natural emollient for lips", "beeswax properties skin barrier", "organic beeswax skincare benefits",
+    "lip tissue biology", "why lips dry out faster than skin", "sebaceous glands lips",
+    # Lip skinification
+    "lip skinification trend", "active ingredients lip balm", "ceramide lip balm benefits",
+    "treating lips like skin", "lip barrier restoration", "petrolatum-free lip care 2026",
+    "clean ingredients lip balm", "EWG verified lip balm", "fragrance-free lip treatment",
+    # Digital wellness / executive audience
+    "digital fatigue recovery ritual", "executive grounding ritual", "analog ritual digital age",
+    "tactile grounding tool workplace", "mindful break from screens", "neurocosmetic lip balm",
+    "digital detox practice professional", "cognitive load management ritual",
+    "workplace mindfulness tools", "knowledge worker wellness", "screen time lip dryness",
+    "lip care for office workers", "climate-controlled office skin care",
     # Mindfulness / ritual
-    "mindful skincare routine", "slow beauty rituals", "intentional self-care",
-    "skincare as meditation", "daily pause routine", "mindfulness morning routine",
-    "present-moment beauty", "stress and skin health", "self-care philosophy",
+    "mindful skincare routine", "intentional daily ritual", "slow beauty rituals",
+    "skincare as meditation", "present-moment grounding practice", "mindfulness morning routine",
+    "sensory grounding techniques", "stress and skin health connection",
+    # Brand / product
+    "limited edition lip balm", "hand-numbered beauty products", "small batch lip care",
+    "mindful gift for executives", "premium wellness gift professional", "charity lip balm",
+    "philanthropic beauty brand", "Jesse A. Eisenbalm", "human-centered skincare",
     # Natural / clean beauty
-    "clean beauty ingredients", "non-toxic lip balm", "sustainable beauty products",
-    "handmade beauty products", "small batch skincare", "minimal ingredient skincare",
-    "fragrance-free lip balm", "EWG verified skincare", "natural chapstick alternatives",
-    # Lifestyle / philosophy
-    "keeping humans human AI world", "analog rituals digital age", "slow living beauty",
-    "intentional purchasing", "quality over quantity skincare", "human touch in beauty",
-    "artisan beauty products", "limited edition skincare", "handcrafted personal care",
+    "clean beauty lip care", "non-toxic lip balm ingredients", "sustainable lip care",
+    "minimalist ingredient skincare", "handmade artisan lip balm", "natural chapstick alternatives",
 ]
 
 
@@ -75,21 +81,28 @@ def run_topic_agent(
     pillars_str = "\n".join(f"{i+1}. {p}" for i, p in enumerate(_CONTENT_PILLARS))
     clusters_str = "\n".join(f"- {k}" for k in _KEYWORD_CLUSTERS)
 
-    system = f"""You are an SEO strategist for Jesse A. Eisenbalm, a premium beeswax lip balm brand.
+    system = f"""You are a GEO (Generative Engine Optimization) strategist for Jesse A. Eisenbalm, a premium beeswax lip balm brand. Your goal is to generate blog topics that rank on Google AND get cited by AI search engines like ChatGPT, Perplexity, and Gemini.
 
 {BRAND_CONTEXT}
 
 CONTENT PILLARS (balance suggestions across all 5):
 {pillars_str}
 
-HIGH-VALUE KEYWORD CLUSTERS TO TARGET:
+HIGH-VALUE KEYWORD & SEMANTIC CLUSTERS TO TARGET:
 {clusters_str}
 
-Your job: Generate SEO-optimised blog topic + focus keyphrase pairs. Each topic must:
-- Target a real search query (lip balm, beeswax, lip care, mindfulness, clean beauty, etc.)
+GEO TOPIC PRINCIPLES:
+- Target "fan-out queries" — topics that answer the sub-questions AI engines use when synthesising answers
+- Prioritise topics that occupy clear semantic territory the brand owns (digital fatigue, petrolatum-free beeswax, executive wellness ritual)
+- Each topic should have a clear implicit question an AI would answer ("Is beeswax better than petroleum jelly for lip health?" → full post answering this)
+- Include both informational (educational) and commercial (product-intent) topics
+- The brand's philanthropic angle (100% charity proceeds) is a citable trust signal — include topics that can feature it naturally
+
+Your job: Generate SEO + GEO-optimised blog topic + focus keyphrase pairs. Each topic must:
+- Target a real conversational search query (lip balm, beeswax, digital fatigue, executive wellness, lip skinification, etc.)
 - Have clear search intent (informational or commercial)
 - Align with the brand's calm, philosophical, minimal tone
-- Offer genuine value to the reader
+- Offer genuine value to the reader — not a sales pitch
 - Be unique — no overlap with existing topics
 
 Return ONLY valid JSON — no markdown fences, no extra text:
@@ -99,17 +112,19 @@ Return ONLY valid JSON — no markdown fences, no extra text:
       "topic": "string (descriptive blog topic title idea)",
       "focus_keyphrase": "string (2–4 word SEO keyphrase)",
       "keywords": ["string", "string", "string"],
-      "content_pillar": "string (one of: ingredient_science | ritual_mindfulness | premium_positioning | natural_education | lifestyle_intentionality)"
+      "content_pillar": "string (one of: ingredient_science | ritual_mindfulness | digital_wellness_professional | lip_skinification | lifestyle_intentionality)"
     }}
   ]
 }}"""
 
     user = (
-        f"Generate {count} unique, SEO-optimised blog topic ideas for the Jesse A. Eisenbalm brand.\n\n"
+        f"Generate {count} unique, SEO + GEO-optimised blog topic ideas for the Jesse A. Eisenbalm brand.\n\n"
         "Requirements:\n"
         "- Spread topics across all 5 content pillars (roughly equal distribution)\n"
-        "- Prioritise keyphrases with informational or commercial intent\n"
-        f"- Mix broad awareness topics with niche long-tail topics{avoid}"
+        "- At least 20% of topics should target the digital_wellness_professional pillar (executives, knowledge workers, digital fatigue)\n"
+        "- At least 15% should target lip_skinification (ceramides, active ingredients, barrier science)\n"
+        "- Mix broad awareness topics with niche long-tail topics\n"
+        f"- Prioritise keyphrases an AI would use when someone asks about lip care, digital wellness, or mindful rituals{avoid}"
     )
 
     response = _openai().chat.completions.create(
