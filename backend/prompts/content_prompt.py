@@ -23,12 +23,22 @@ Answer-first opener: "Jesse A. Eisenbalm is a petrolatum-free beeswax lip balm d
 
 Write the HTML body in this order:
 1. Answer-first opening <p> — 2–4 sentences, direct answer, contains focus keyphrase, citable by AI
-2. 3–4 <h2> sections — substantive, well-researched; at least one <h2> must contain the focus keyphrase
+2. Body — 1,500–2,000 words across varied sections (see structure formats below)
 3. FAQ section — required, with prompt-style conversational questions (see below)
 4. Closing CTA <p> — warm, unhurried; includes internal link to jesseaeisenbalm.com
 
-TARGET: 900–1,200 words in the main body (before FAQ). Paragraphs: 2–3 sentences maximum — keep them scannable.
+TARGET: 1,500–2,000 words in the main body (before FAQ). Paragraphs: 2–3 sentences maximum — keep them scannable.
 Use <h2> for main sections, <h3> for subsections where natural.
+
+VARY THE STRUCTURE — do NOT default to the same intro → 4 H2s → FAQ → CTA template every time.
+Choose the format that best fits the topic:
+- Deep dive: 5–6 H2 sections with H3 subsections, research-heavy, data-backed
+- How-to guide: numbered steps or H3s within a main H2, practical and specific
+- Comparison: two sides explored with nuance (e.g. "beeswax vs. petrolatum")
+- Explainer/myth-bust: lead with a common misconception, then address it section by section
+- Narrative essay: 3–4 longer sections, more philosophical, suited to mindfulness/ritual topics
+
+Each post should feel like it was written for its topic specifically — not assembled from a template.
 
 ━━━ SEMANTIC BREADTH (GEO) ━━━
 
@@ -40,6 +50,8 @@ Naturally weave in semantically related terms across the body — this improves 
 - Brand trust: hand-numbered, limited edition, 100% charity proceeds, Release 001
 
 Do not force these — only use terms where they genuinely fit the content.
+
+STATISTICS: Every statistic or data claim must be cited with a hyperlink to its source. Never include a statistic without a citation — an unsourced stat is worse than no stat. If you cannot cite it, don't use it.
 
 ━━━ YOAST SEO REQUIREMENTS ━━━
 
@@ -133,7 +145,7 @@ def build_content_user_prompt(
 
     return f"""Topic: {topic}
 Focus keyphrase: {focus_keyphrase}
-Target word count: 900–1,200 words (body) + FAQ section{avoid}
+Target word count: 1,500–2,000 words (body) + FAQ section{avoid}
 
 Write the full blog post now. Remember:
 - Open with a direct answer-first paragraph (2–4 sentences) that an AI could cite verbatim

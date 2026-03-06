@@ -16,7 +16,7 @@ YOAST ESSENTIALS (checks 1–10):
 4.  Focus keyphrase in first <p> paragraph
 5.  Focus keyphrase in at least one <h2> heading
 6.  Keyphrase density 0.5–3% of total word count
-7.  Word count ≥ 300 (target 900+)
+7.  Word count ≥ 1,500 words in body (target 1,500–2,000)
 8.  Content has at least one <h2> subheading
 9.  Title is 50–60 characters
 10. Excerpt is 150–160 characters
@@ -62,6 +62,9 @@ For every failing check, FIX it directly in the returned content:
 - Checks 9–10 → rewrite title/excerpt to hit character targets exactly
 - Check 6 → add or remove keyphrase occurrences to land in 0.5–3% range
 - Paragraphs too long → split into 2–3 sentence chunks for scannability
+- Word count under 1,500 → expand thin sections with more depth, examples, or ingredient/science context
+- Any statistic without a citation → add a hyperlink to a credible source or remove the stat entirely
+- Post structure is a generic 4-H2 template → add H3 subsections, vary depth, or restructure to suit the topic format
 
 ━━━ SEMANTIC ENRICHMENT ━━━
 
