@@ -131,6 +131,71 @@ def insert_log(
     }).execute()
 
 
+# ── Publishing frequency helpers ───────────────────────────────────────────────
+
+def count_posts_today() -> int:
+    """Count posts published or saved as draft today (UTC)."""
+    from datetime import datetime, timezone
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    res = (
+        _sb()
+        .from_("automation_logs")
+        .select("*", count="exact", head=True)
+        .in_("status", ["success", "draft"])
+        .gte("created_at", today_start)
+        .execute()
+    )
+    return res.count or 0
+
+
+# ── Structure rotation helpers ──────────────────────────────────────────────────
+
+_RECENT_STRUCTURES_KEY = "recent_structures"
+
+
+def get_recent_structures(n: int = 3) -> list[str]:
+    """Return the last n structure types used, oldest first."""
+    try:
+        res = (
+            _sb()
+            .from_("app_settings")
+            .select("value")
+            .eq("key", _RECENT_STRUCTURES_KEY)
+            .limit(1)
+            .execute()
+        )
+        if not res.data:
+            return []
+        raw = res.data[0].get("value")
+        if isinstance(raw, list):
+            return [str(s) for s in raw[-n:]]
+        return []
+    except Exception:
+        return []
+
+
+def record_structure_used(structure: str) -> None:
+    """Append structure to the recent_structures list (keep last 10)."""
+    try:
+        recent = get_recent_structures(10)
+        recent.append(structure)
+        recent = recent[-10:]  # keep last 10 only
+        existing = (
+            _sb()
+            .from_("app_settings")
+            .select("key")
+            .eq("key", _RECENT_STRUCTURES_KEY)
+            .limit(1)
+            .execute()
+        )
+        if existing.data:
+            _sb().from_("app_settings").update({"value": recent}).eq("key", _RECENT_STRUCTURES_KEY).execute()
+        else:
+            _sb().from_("app_settings").insert({"key": _RECENT_STRUCTURES_KEY, "value": recent}).execute()
+    except Exception:
+        pass  # non-fatal — structure rotation degrades gracefully
+
+
 # ── Schedule settings ──────────────────────────────────────────────────────────
 
 def get_schedule_settings() -> ScheduleSettings:

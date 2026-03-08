@@ -1,7 +1,6 @@
 """Supervisor agent — orchestrates the full pipeline for one queue item."""
 from __future__ import annotations
 
-import asyncio
 import time
 from dataclasses import dataclass
 from typing import Callable, TypeVar
@@ -17,9 +16,20 @@ T = TypeVar("T")
 
 _AUTO_PUBLISH_THRESHOLD = 85
 _DRAFT_THRESHOLD = 70
+_WORD_COUNT_MIN = 1500
 _MAX_RETRIES = 2
 _QUEUE_REPLENISH_THRESHOLD = 6
 _QUEUE_REPLENISH_COUNT = 15
+_MAX_POSTS_PER_DAY = 1
+
+_ALL_STRUCTURES = [
+    "deep-dive",
+    "comparison",
+    "how-to",
+    "myth-busting",
+    "story-science",
+    "data-driven",
+]
 
 
 @dataclass
@@ -39,14 +49,23 @@ class PipelineResult:
 
 def run_pipeline() -> PipelineResult:
     """Run one full pipeline iteration synchronously."""
-    # 1. Auto-replenish queue if running low (fire-and-forget in thread)
+    # 1. Daily frequency gate — skip if already published/drafted today
+    posts_today = db.count_posts_today()
+    if posts_today >= _MAX_POSTS_PER_DAY:
+        return PipelineResult(
+            status="error",
+            topic=None,
+            error=f"Daily limit reached: {posts_today} post(s) already published today",
+        )
+
+    # 2. Auto-replenish queue if running low (fire-and-forget in thread)
     pending = db.count_pending_queue_items()
     if pending < _QUEUE_REPLENISH_THRESHOLD:
         import threading
         t = threading.Thread(target=_replenish_queue, daemon=True)
         t.start()
 
-    # 2. Dequeue next topic
+    # 3. Dequeue next topic
     db.reset_in_progress_items()
     item = db.dequeue_next_topic()
     if item is None:
@@ -55,16 +74,39 @@ def run_pipeline() -> PipelineResult:
     topic = item.topic
     focus_keyphrase = item.focus_keyphrase or topic
 
+    # 4. Pick structure (rotate — avoid last 3 used)
+    structure_type = _pick_structure()
+
     try:
-        # 3. Generate content draft
+        # 5. Generate content draft
         draft: ContentDraft = _with_retry(
-            lambda: run_content_agent(topic, focus_keyphrase)
+            lambda: run_content_agent(topic, focus_keyphrase, structure_type)
         )
 
-        # 4. Revise + SEO audit
+        # 6. Revise + SEO audit
         revision = _with_retry(lambda: run_revision_agent(draft))
 
-        # 5. Hold if below threshold
+        # 7. Hold if word count too low (revision couldn't fix it — needs regeneration)
+        if revision.word_count > 0 and revision.word_count < _WORD_COUNT_MIN:
+            db.update_queue_status(item.id, "held", set_processed_at=True)
+            db.insert_log(
+                queue_id=item.id,
+                post_id=None,
+                status="held",
+                confidence_score=revision.confidence_score,
+                seo_checks_passed=revision.seo_checks_passed,
+                revision_notes=f"[word count {revision.word_count} < {_WORD_COUNT_MIN}] {revision.revision_notes}",
+                error_message=None,
+            )
+            return PipelineResult(
+                status="held",
+                topic=topic,
+                confidence_score=revision.confidence_score,
+                seo_checks_passed=revision.seo_checks_passed,
+                revision_notes=revision.revision_notes,
+            )
+
+        # 8. Hold if confidence below threshold
         if revision.confidence_score < _DRAFT_THRESHOLD:
             db.update_queue_status(item.id, "held", set_processed_at=True)
             db.insert_log(
@@ -84,18 +126,18 @@ def run_pipeline() -> PipelineResult:
                 revision_notes=revision.revision_notes,
             )
 
-        # 6. Generate + upload cover image
+        # 9. Generate + upload cover image
         cover_image_url: str = _with_retry(
             lambda: run_image_agent(revision.title, revision.excerpt)
         )
 
-        # 7. Validate payload
+        # 10. Validate payload
         _validate_payload(revision, cover_image_url)
 
-        # 8. Determine publish mode
+        # 11. Determine publish mode
         published = revision.confidence_score >= _AUTO_PUBLISH_THRESHOLD
 
-        # 9. POST to blog API
+        # 12. POST to blog API
         post = _with_retry(lambda: create_post(
             title=revision.title,
             excerpt=revision.excerpt,
@@ -106,7 +148,10 @@ def run_pipeline() -> PipelineResult:
             published=published,
         ))
 
-        # 10. Update queue + log
+        # 13. Record structure used for rotation
+        db.record_structure_used(draft.structure_used)
+
+        # 14. Update queue + log
         db.update_queue_status(item.id, "published", set_processed_at=True)
         log_status = "success" if published else "draft"
         db.insert_log(
@@ -158,6 +203,16 @@ def run_replenish() -> dict:
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
+def _pick_structure() -> str:
+    """Return a structure type not in the last 3 used, rotating evenly."""
+    import random
+    recent = set(db.get_recent_structures(3))
+    available = [s for s in _ALL_STRUCTURES if s not in recent]
+    if not available:
+        available = _ALL_STRUCTURES  # fallback if all were recently used
+    return random.choice(available)
+
 
 def _with_retry(fn: Callable[[], T]) -> T:
     last_exc: Exception | None = None

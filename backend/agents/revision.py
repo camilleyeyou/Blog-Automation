@@ -28,6 +28,8 @@ class RevisionResult:
     tags: list[str]
     confidence_score: int
     seo_checks_passed: int
+    word_count: int
+    flagged_issues: list[str]
     revision_notes: str
 
 
@@ -91,6 +93,13 @@ def _validate(data: object) -> RevisionResult:
     if not isinstance(seo_checks_passed, (int, float)):
         raise RuntimeError("Revision agent: missing seo_checks_passed")
 
+    word_count = data.get("word_count", 0)
+    word_count = max(0, round(float(word_count))) if isinstance(word_count, (int, float)) else 0
+
+    flagged_issues = data.get("flagged_issues", [])
+    if not isinstance(flagged_issues, list):
+        flagged_issues = []
+
     revision_notes = data.get("revision_notes", "")
     if not isinstance(revision_notes, str):
         raise RuntimeError("Revision agent: missing revision_notes")
@@ -102,5 +111,7 @@ def _validate(data: object) -> RevisionResult:
         tags=[str(t) for t in tags],
         confidence_score=min(100, max(0, round(float(confidence_score)))),
         seo_checks_passed=min(15, max(0, round(float(seo_checks_passed)))),
+        word_count=word_count,
+        flagged_issues=[str(i) for i in flagged_issues],
         revision_notes=revision_notes.strip(),
     )

@@ -26,11 +26,14 @@ class ContentDraft:
     content: str
     tags: list[str]
     focus_keyphrase: str
+    structure_used: str = "deep-dive"
+    word_count: int = 0
 
 
 def run_content_agent(
     topic: str,
     focus_keyphrase: str,
+    structure_type: str,
     existing_titles: list[str] | None = None,
 ) -> ContentDraft:
     response = _openai().chat.completions.create(
@@ -39,7 +42,7 @@ def run_content_agent(
         response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": build_content_system_prompt()},
-            {"role": "user", "content": build_content_user_prompt(topic, focus_keyphrase, existing_titles)},
+            {"role": "user", "content": build_content_user_prompt(topic, focus_keyphrase, structure_type, existing_titles)},
         ],
     )
 
@@ -79,10 +82,16 @@ def _validate(data: object) -> ContentDraft:
     if not isinstance(focus_keyphrase, str) or not focus_keyphrase.strip():
         raise RuntimeError("Content agent: missing focus_keyphrase")
 
+    structure_used = str(data.get("structure_used", "deep-dive")).strip() or "deep-dive"
+    word_count = data.get("word_count", 0)
+    word_count = max(0, round(float(word_count))) if isinstance(word_count, (int, float)) else 0
+
     return ContentDraft(
         title=title.strip(),
         excerpt=excerpt.strip(),
         content=content.strip(),
         tags=[str(t) for t in tags],
         focus_keyphrase=focus_keyphrase.strip(),
+        structure_used=structure_used,
+        word_count=word_count,
     )
