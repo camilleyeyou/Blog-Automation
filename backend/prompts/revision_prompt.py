@@ -88,7 +88,11 @@ For every failing check, FIX it directly in the returned content:
 - Checks 9–10 → rewrite title/excerpt to hit character targets exactly
 - Check 6 → add or remove keyphrase occurrences to land in 0.5–3% range
 - Paragraphs too long → split into 2–3 sentence chunks for scannability
-- Word count under 1,500 → expand thin sections with more depth, examples, or ingredient/science context
+- Word count under 1,500 → THIS IS CRITICAL: you MUST expand the content significantly.
+  Add entirely new H2 sections if needed. Add research citations, real-world examples,
+  ingredient science, or practical guidance. A 600-word draft needs 900+ words of new content.
+  Do not just add a sentence here and there — write substantial new paragraphs and sections.
+  Target: bring the total to at least 1,500 words, ideally 1,800+
 - Any statistic without a citation → add a hyperlink to a credible source or remove the stat entirely
 - Generic CTA paragraph → rewrite as a plain closing sentence or remove entirely
 - FAQ section present → remove it entirely; if content needs padding, expand a body section instead

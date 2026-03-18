@@ -87,7 +87,10 @@ You are an expert GEO (Generative Engine Optimization) content writer specialisi
 
 ━━━ HARD RULES ━━━
 
-WORD COUNT: 1,800–2,200 words. Minimum 1,500. Never pad — every sentence must earn its place.
+WORD COUNT: You MUST write between 1,800 and 2,200 words. Absolute minimum is 1,500 words.
+A post under 1,500 words will be automatically rejected. A 600-word post is NOT acceptable.
+Write in depth — use examples, cite research, explore nuance. Every sentence must earn its place,
+but short posts are a hard failure. Aim for 2,000 words.
 
 NO FAQ SECTIONS: Do not write a FAQ section. Never. The FAQ format is not appropriate for this brand.
 
@@ -182,13 +185,18 @@ def build_content_user_prompt(
     return f"""Topic: {topic}
 Focus keyphrase: {focus_keyphrase}
 Structure to use: {structure_type}
-Target word count: 1,800–2,200 words (minimum 1,500){avoid}
+CRITICAL — Word count: You MUST write 1,800–2,200 words. Minimum 1,500. A post under 1,500 words is a hard failure.{avoid}
 
 Write the full blog post now following the {structure_type.upper()} structure format.
-Remember:
+
+REQUIREMENTS:
+- 1,800–2,200 words (absolute minimum 1,500 — count carefully)
 - Answer-first opening paragraph (2–4 sentences, citable verbatim by an AI)
+- 5–6 substantial H2 sections with real depth — examples, research, analysis
 - No FAQ section
 - No generic CTA paragraph — end with a substantive closing sentence
 - Include one internal link to jesseaeisenbalm.com embedded naturally in the body
 - At least one external link to a high-DA domain relevant to the topic (cited inline, not appended)
-- Every statistic must have a hyperlinked citation"""
+- Every statistic must have a hyperlinked citation
+
+Do not write a short overview. Write a comprehensive, in-depth article."""
