@@ -86,8 +86,9 @@ def run_pipeline() -> PipelineResult:
         # 6. Revise + SEO audit
         revision = _with_retry(lambda: run_revision_agent(draft))
 
-        # 7. Hold if word count too low (revision couldn't fix it — needs regeneration)
-        if revision.word_count > 0 and revision.word_count < _WORD_COUNT_MIN:
+        # 7. Hold if word count too low (compute from actual content, not LLM's report)
+        actual_word_count = _count_words(revision.content)
+        if actual_word_count < _WORD_COUNT_MIN:
             db.update_queue_status(item.id, "held", set_processed_at=True)
             db.insert_log(
                 queue_id=item.id,
@@ -95,7 +96,7 @@ def run_pipeline() -> PipelineResult:
                 status="held",
                 confidence_score=revision.confidence_score,
                 seo_checks_passed=revision.seo_checks_passed,
-                revision_notes=f"[word count {revision.word_count} < {_WORD_COUNT_MIN}] {revision.revision_notes}",
+                revision_notes=f"[word count {actual_word_count} < {_WORD_COUNT_MIN}] {revision.revision_notes}",
                 error_message=None,
             )
             return PipelineResult(
@@ -203,6 +204,13 @@ def run_replenish() -> dict:
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
+def _count_words(html: str) -> int:
+    """Strip HTML tags and count words in the content."""
+    import re
+    text = re.sub(r"<[^>]+>", " ", html)
+    return len(text.split())
+
 
 def _pick_structure() -> str:
     """Return a structure type not in the last 3 used, rotating evenly."""

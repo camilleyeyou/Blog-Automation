@@ -12,7 +12,10 @@ from services.upload_api import upload_image
 
 logger = logging.getLogger(__name__)
 
-_MODEL = "gemini-2.0-flash-exp-image-generation"
+_MODELS = [
+    "gemini-2.0-flash-preview-image-generation",
+    "gemini-2.0-flash-exp-image-generation",
+]
 _client: genai.Client | None = None
 
 
@@ -129,16 +132,30 @@ def run_image_agent(title: str, excerpt: str) -> str:
 
     prompt = _build_prompt(title, scene, lighting, surface, include_product)
 
-    logger.info("[image] calling Gemini model=%s mood=%s scene=%s", _MODEL, mood, scene_key)
-
     client = _get_client()
-    response = client.models.generate_content(
-        model=_MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_modalities=["IMAGE", "TEXT"],
-        ),
-    )
+    response = None
+    used_model = ""
+
+    for model in _MODELS:
+        try:
+            logger.info("[image] trying Gemini model=%s mood=%s scene=%s", model, mood, scene_key)
+            response = client.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_modalities=["IMAGE", "TEXT"],
+                ),
+            )
+            used_model = model
+            break
+        except Exception as exc:
+            logger.warning("[image] model=%s failed: %s", model, exc)
+            continue
+
+    if response is None:
+        raise RuntimeError(f"Image agent: all models failed — tried {_MODELS}")
+
+    logger.info("[image] success with model=%s", used_model)
 
     # Extract image bytes from response parts
     image_bytes: bytes | None = None
