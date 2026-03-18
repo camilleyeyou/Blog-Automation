@@ -39,6 +39,7 @@ def run_content_agent(
     response = _openai().chat.completions.create(
         model="gpt-4o",
         temperature=0.7,
+        max_tokens=16384,
         response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": build_content_system_prompt()},

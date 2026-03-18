@@ -37,6 +37,7 @@ def run_revision_agent(draft: ContentDraft) -> RevisionResult:
     response = _openai().chat.completions.create(
         model="gpt-4o",
         temperature=0.3,
+        max_tokens=16384,
         response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": build_revision_system_prompt()},
