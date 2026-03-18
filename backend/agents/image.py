@@ -1,29 +1,21 @@
-"""Image agent — Gemini Imagen image generation + upload."""
+"""Image agent — Gemini / DALL-E image generation + upload."""
 from __future__ import annotations
 
+import base64
 import logging
 import os
 import random
 import re
-from google import genai
-from google.genai import types
 
 from services.upload_api import upload_image
 
 logger = logging.getLogger(__name__)
 
-_MODELS = [
+# Gemini models to try in order (Google rotates these frequently)
+_GEMINI_MODELS = [
     "gemini-2.0-flash-preview-image-generation",
     "gemini-2.0-flash-exp-image-generation",
 ]
-_client: genai.Client | None = None
-
-
-def _get_client() -> genai.Client:
-    global _client
-    if _client is None:
-        _client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-    return _client
 
 
 # ── Product specification ──────────────────────────────────────────────────────
@@ -119,24 +111,25 @@ def _detect_mood(title: str, excerpt: str) -> str:
     return "general"
 
 
-# ── Agent ──────────────────────────────────────────────────────────────────────
+# ── Gemini image generation ───────────────────────────────────────────────────
 
-def run_image_agent(title: str, excerpt: str) -> str:
-    """Generate a cover image with Imagen 3 and return its public URL."""
-    mood = _detect_mood(title, excerpt)
-    scene_key = random.choice(_SCENE_MAP[mood])
-    scene = random.choice(_SCENES[scene_key])
-    lighting = random.choice(_LIGHTING)
-    surface = random.choice(_SURFACES)
-    include_product = scene_key == "product_hero" or random.random() < 0.5
+def _try_gemini(prompt: str, mood: str, scene_key: str) -> bytes | None:
+    """Try Gemini models for image generation. Returns image bytes or None."""
+    try:
+        from google import genai
+        from google.genai import types
+    except ImportError:
+        logger.warning("[image] google-genai not installed, skipping Gemini")
+        return None
 
-    prompt = _build_prompt(title, scene, lighting, surface, include_product)
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        logger.warning("[image] GEMINI_API_KEY not set, skipping Gemini")
+        return None
 
-    client = _get_client()
-    response = None
-    used_model = ""
+    client = genai.Client(api_key=api_key)
 
-    for model in _MODELS:
+    for model in _GEMINI_MODELS:
         try:
             logger.info("[image] trying Gemini model=%s mood=%s scene=%s", model, mood, scene_key)
             response = client.models.generate_content(
@@ -146,37 +139,84 @@ def run_image_agent(title: str, excerpt: str) -> str:
                     response_modalities=["IMAGE", "TEXT"],
                 ),
             )
-            used_model = model
-            break
+
+            for candidate in response.candidates or []:
+                for part in (candidate.content.parts if candidate.content else []) or []:
+                    inline = getattr(part, "inline_data", None)
+                    if inline and inline.data:
+                        raw = inline.data
+                        image_bytes = raw if isinstance(raw, bytes) else bytes(raw)
+                        logger.info("[image] Gemini success model=%s bytes=%d", model, len(image_bytes))
+                        return image_bytes
         except Exception as exc:
-            logger.warning("[image] model=%s failed: %s", model, exc)
+            logger.warning("[image] Gemini model=%s failed: %s", model, exc)
             continue
 
-    if response is None:
-        raise RuntimeError(f"Image agent: all models failed — tried {_MODELS}")
+    return None
 
-    logger.info("[image] success with model=%s", used_model)
 
-    # Extract image bytes from response parts
-    image_bytes: bytes | None = None
-    mime_type = "image/png"
+# ── DALL-E 3 fallback ─────────────────────────────────────────────────────────
 
-    for candidate in response.candidates or []:
-        for part in (candidate.content.parts if candidate.content else []) or []:
-            inline = getattr(part, "inline_data", None)
-            if inline and inline.data:
-                raw = inline.data
-                image_bytes = raw if isinstance(raw, bytes) else bytes(raw)
-                mime_type = inline.mime_type or "image/png"
-                logger.info("[image] received image mime=%s bytes=%d", mime_type, len(image_bytes))
-                break
-        if image_bytes:
-            break
+def _try_dalle(prompt: str) -> bytes | None:
+    """Try DALL-E 3 for image generation. Returns image bytes or None."""
+    try:
+        from openai import OpenAI
+    except ImportError:
+        logger.warning("[image] openai not installed, skipping DALL-E")
+        return None
 
-    if not image_bytes:
-        raise RuntimeError("Image agent: no image returned from Gemini")
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        logger.warning("[image] OPENAI_API_KEY not set, skipping DALL-E")
+        return None
 
-    return upload_image(image_bytes, mime_type)
+    try:
+        logger.info("[image] trying DALL-E 3 fallback")
+        client = OpenAI(api_key=api_key)
+        response = client.images.generate(
+            model="dall-e-3",
+            prompt=prompt,
+            size="1792x1024",
+            quality="standard",
+            response_format="b64_json",
+            n=1,
+        )
+
+        b64_data = response.data[0].b64_json
+        if b64_data:
+            image_bytes = base64.b64decode(b64_data)
+            logger.info("[image] DALL-E 3 success bytes=%d", len(image_bytes))
+            return image_bytes
+    except Exception as exc:
+        logger.warning("[image] DALL-E 3 failed: %s", exc)
+
+    return None
+
+
+# ── Agent ──────────────────────────────────────────────────────────────────────
+
+def run_image_agent(title: str, excerpt: str) -> str:
+    """Generate a cover image and return its public URL."""
+    mood = _detect_mood(title, excerpt)
+    scene_key = random.choice(_SCENE_MAP[mood])
+    scene = random.choice(_SCENES[scene_key])
+    lighting = random.choice(_LIGHTING)
+    surface = random.choice(_SURFACES)
+    include_product = scene_key == "product_hero" or random.random() < 0.5
+
+    prompt = _build_prompt(title, scene, lighting, surface, include_product)
+
+    # 1. Try Gemini models first
+    image_bytes = _try_gemini(prompt, mood, scene_key)
+
+    # 2. Fall back to DALL-E 3
+    if image_bytes is None:
+        image_bytes = _try_dalle(prompt)
+
+    if image_bytes is None:
+        raise RuntimeError("Image agent: all providers failed (Gemini + DALL-E 3)")
+
+    return upload_image(image_bytes, "image/png")
 
 
 def _build_prompt(
