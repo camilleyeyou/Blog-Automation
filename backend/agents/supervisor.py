@@ -92,27 +92,31 @@ def run_pipeline() -> PipelineResult:
         actual_word_count = _count_words(revision.content)
         logger.info("[supervisor] revision pass 1: %d words, confidence %d", actual_word_count, revision.confidence_score)
 
-        # 7. If word count is too low, expand the content (add new sections, don't rewrite)
-        if actual_word_count < _WORD_COUNT_TARGET:
+        # 7. Expand content until it hits the target (up to 2 expansion passes)
+        expansion_pass = 0
+        current_html = revision.content
+        while actual_word_count < _WORD_COUNT_TARGET and expansion_pass < 2:
+            expansion_pass += 1
             logger.info(
-                "[supervisor] expanding content: %d → %d words needed",
-                actual_word_count, _WORD_COUNT_TARGET,
+                "[supervisor] expansion pass %d: %d → %d words needed",
+                expansion_pass, actual_word_count, _WORD_COUNT_TARGET,
             )
-            expanded_html = _with_retry(lambda: expand_content(
-                content=revision.content,
+            current_html = _with_retry(lambda: expand_content(
+                content=current_html,
                 title=revision.title,
                 focus_keyphrase=draft.focus_keyphrase,
                 current_word_count=actual_word_count,
                 target_word_count=_WORD_COUNT_TARGET,
             ))
-            actual_word_count = _count_words(expanded_html)
-            logger.info("[supervisor] expanded to %d words", actual_word_count)
+            actual_word_count = _count_words(current_html)
+            logger.info("[supervisor] expansion pass %d result: %d words", expansion_pass, actual_word_count)
 
-            # 8. Final revision pass on the expanded content — re-audit SEO
+        # 8. Final revision pass if content was expanded — re-audit SEO
+        if expansion_pass > 0:
             expanded_draft = ContentDraft(
                 title=revision.title,
                 excerpt=revision.excerpt,
-                content=expanded_html,
+                content=current_html,
                 tags=revision.tags,
                 focus_keyphrase=draft.focus_keyphrase,
                 structure_used=draft.structure_used,
@@ -120,7 +124,7 @@ def run_pipeline() -> PipelineResult:
             )
             revision = _with_retry(lambda: run_revision_agent(expanded_draft))
             actual_word_count = _count_words(revision.content)
-            logger.info("[supervisor] revision pass 2: %d words, confidence %d", actual_word_count, revision.confidence_score)
+            logger.info("[supervisor] final revision: %d words, confidence %d", actual_word_count, revision.confidence_score)
 
         # 9. Hold only if still below hard minimum after expansion
         if actual_word_count < _WORD_COUNT_MIN or revision.confidence_score < _DRAFT_THRESHOLD:
