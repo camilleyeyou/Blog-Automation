@@ -169,7 +169,7 @@ def run_pipeline() -> PipelineResult:
             title=revision.title,
             excerpt=revision.excerpt,
             content=revision.content,
-            author="Jesse A. Eisenbalm",
+            author="Elise Caldwell",
             cover_image=cover_image_url,
             tags=revision.tags,
             published=published,
