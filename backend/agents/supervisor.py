@@ -1,8 +1,11 @@
 """Supervisor agent — orchestrates the full pipeline for one queue item."""
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 from typing import Callable, TypeVar
 
 from agents.content import run_content_agent, ContentDraft
@@ -18,6 +21,7 @@ _AUTO_PUBLISH_THRESHOLD = 85
 _DRAFT_THRESHOLD = 70
 _WORD_COUNT_MIN = 900
 _MAX_RETRIES = 2
+_MAX_REVISION_ROUNDS = 3
 _QUEUE_REPLENISH_THRESHOLD = 6
 _QUEUE_REPLENISH_COUNT = 15
 _MAX_POSTS_PER_DAY = 1
@@ -83,32 +87,55 @@ def run_pipeline() -> PipelineResult:
             lambda: run_content_agent(topic, focus_keyphrase, structure_type)
         )
 
-        # 6. Revise + SEO audit
+        # 6. Revise + SEO audit (loop until publishable or max rounds)
         revision = _with_retry(lambda: run_revision_agent(draft))
-
-        # 7. Hold if word count too low (compute from actual content, not LLM's report)
         actual_word_count = _count_words(revision.content)
-        if actual_word_count < _WORD_COUNT_MIN:
-            db.update_queue_status(item.id, "held", set_processed_at=True)
-            db.insert_log(
-                queue_id=item.id,
-                post_id=None,
-                status="held",
-                confidence_score=revision.confidence_score,
-                seo_checks_passed=revision.seo_checks_passed,
-                revision_notes=f"[word count {actual_word_count} < {_WORD_COUNT_MIN}] {revision.revision_notes}",
-                error_message=None,
-            )
-            return PipelineResult(
-                status="held",
-                topic=topic,
-                confidence_score=revision.confidence_score,
-                seo_checks_passed=revision.seo_checks_passed,
-                revision_notes=revision.revision_notes,
+
+        for revision_round in range(2, _MAX_REVISION_ROUNDS + 1):
+            issues: list[str] = []
+            if actual_word_count < _WORD_COUNT_MIN:
+                issues.append(
+                    f"Word count is {actual_word_count} — minimum is {_WORD_COUNT_MIN}. "
+                    f"Add {_WORD_COUNT_MIN - actual_word_count}+ words of substantive content: "
+                    "new H2 sections, research citations, examples, or deeper analysis."
+                )
+            if revision.confidence_score < _DRAFT_THRESHOLD:
+                issues.append(
+                    f"Confidence score is {revision.confidence_score} — minimum is {_DRAFT_THRESHOLD}. "
+                    f"SEO checks passed: {revision.seo_checks_passed}/15. "
+                    "Fix all failing checks and improve content quality."
+                )
+            if not issues:
+                break
+
+            logger.info(
+                "[supervisor] revision round %d/%d — %s",
+                revision_round, _MAX_REVISION_ROUNDS,
+                "; ".join(issues),
             )
 
-        # 8. Hold if confidence below threshold
-        if revision.confidence_score < _DRAFT_THRESHOLD:
+            # Feed the revision output back as a new draft for another pass
+            feedback_draft = ContentDraft(
+                title=revision.title,
+                excerpt=revision.excerpt,
+                content=revision.content,
+                tags=revision.tags,
+                focus_keyphrase=draft.focus_keyphrase,
+                structure_used=draft.structure_used,
+                word_count=actual_word_count,
+            )
+            revision = _with_retry(lambda: run_revision_agent(feedback_draft))
+            actual_word_count = _count_words(revision.content)
+
+        # 7. After all revision rounds, hold if still not good enough
+        if actual_word_count < _WORD_COUNT_MIN or revision.confidence_score < _DRAFT_THRESHOLD:
+            reason_parts: list[str] = []
+            if actual_word_count < _WORD_COUNT_MIN:
+                reason_parts.append(f"word count {actual_word_count} < {_WORD_COUNT_MIN}")
+            if revision.confidence_score < _DRAFT_THRESHOLD:
+                reason_parts.append(f"confidence {revision.confidence_score} < {_DRAFT_THRESHOLD}")
+            reason = "; ".join(reason_parts)
+
             db.update_queue_status(item.id, "held", set_processed_at=True)
             db.insert_log(
                 queue_id=item.id,
@@ -116,7 +143,7 @@ def run_pipeline() -> PipelineResult:
                 status="held",
                 confidence_score=revision.confidence_score,
                 seo_checks_passed=revision.seo_checks_passed,
-                revision_notes=revision.revision_notes,
+                revision_notes=f"[{reason} after {_MAX_REVISION_ROUNDS} rounds] {revision.revision_notes}",
                 error_message=None,
             )
             return PipelineResult(
