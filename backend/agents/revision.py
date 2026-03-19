@@ -66,6 +66,77 @@ def run_revision_agent(draft: ContentDraft) -> RevisionResult:
     return _validate(parsed)
 
 
+def expand_content(
+    content: str,
+    title: str,
+    focus_keyphrase: str,
+    current_word_count: int,
+    target_word_count: int = 1500,
+) -> str:
+    """Add new sections to existing content to reach the target word count.
+
+    Returns the full HTML body with new sections inserted before the closing.
+    Does NOT rewrite existing content — only appends new material.
+    """
+    words_needed = target_word_count - current_word_count
+
+    response = _openai().chat.completions.create(
+        model="gpt-4o",
+        temperature=0.7,
+        max_tokens=16384,
+        response_format={"type": "json_object"},
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are a content expansion specialist. Your job is to ADD new, "
+                    "substantive sections to an existing blog post to increase its word count. "
+                    "You must NOT rewrite, shorten, or remove any existing content. "
+                    "Keep the same brand voice: calm, minimal, philosophical. "
+                    "No FAQ sections. No generic CTA paragraphs."
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"""The blog post below is {current_word_count} words. It needs to be at least {target_word_count} words.
+You must add approximately {words_needed}+ words of NEW content.
+
+Title: {title}
+Focus keyphrase: {focus_keyphrase}
+
+EXISTING CONTENT (do NOT remove or rewrite any of this):
+{content}
+
+INSTRUCTIONS:
+1. Keep ALL existing content exactly as-is
+2. Add 2–3 NEW <h2> sections with 2–3 paragraphs each (or expand existing thin sections with new <h3> subsections)
+3. New content should add: research citations (with hyperlinks), real-world examples, ingredient science, practical guidance, or deeper analysis
+4. Weave the focus keyphrase naturally into the new sections (1–2 times)
+5. Maintain the same tone and HTML formatting as the existing content
+6. Insert new sections BEFORE the final closing paragraph/sentence
+
+Return ONLY valid JSON:
+{{"content": "the full HTML body with existing + new content combined"}}""",
+            },
+        ],
+    )
+
+    raw = response.choices[0].message.content
+    if not raw:
+        raise RuntimeError("Expand content: empty response")
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        raise RuntimeError(f"Expand content: invalid JSON: {raw[:200]}")
+
+    expanded = parsed.get("content", "")
+    if not isinstance(expanded, str) or not expanded.strip():
+        raise RuntimeError("Expand content: missing content in response")
+
+    return expanded.strip()
+
+
 def _validate(data: object) -> RevisionResult:
     if not isinstance(data, dict):
         raise RuntimeError("Revision agent: response is not an object")

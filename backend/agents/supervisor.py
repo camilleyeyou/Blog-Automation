@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 from typing import Callable, TypeVar
 
 from agents.content import run_content_agent, ContentDraft
-from agents.revision import run_revision_agent
+from agents.revision import run_revision_agent, expand_content
 from agents.image import run_image_agent
 from agents.topic import run_topic_agent
 from services import supabase_client as db
@@ -20,8 +20,8 @@ T = TypeVar("T")
 _AUTO_PUBLISH_THRESHOLD = 85
 _DRAFT_THRESHOLD = 70
 _WORD_COUNT_MIN = 900
+_WORD_COUNT_TARGET = 1500
 _MAX_RETRIES = 2
-_MAX_REVISION_ROUNDS = 3
 _QUEUE_REPLENISH_THRESHOLD = 6
 _QUEUE_REPLENISH_COUNT = 15
 _MAX_POSTS_PER_DAY = 1
@@ -87,47 +87,42 @@ def run_pipeline() -> PipelineResult:
             lambda: run_content_agent(topic, focus_keyphrase, structure_type)
         )
 
-        # 6. Revise + SEO audit (loop until publishable or max rounds)
+        # 6. First revision pass — SEO audit + improvements
         revision = _with_retry(lambda: run_revision_agent(draft))
         actual_word_count = _count_words(revision.content)
+        logger.info("[supervisor] revision pass 1: %d words, confidence %d", actual_word_count, revision.confidence_score)
 
-        for revision_round in range(2, _MAX_REVISION_ROUNDS + 1):
-            issues: list[str] = []
-            if actual_word_count < _WORD_COUNT_MIN:
-                issues.append(
-                    f"Word count is {actual_word_count} — minimum is {_WORD_COUNT_MIN}. "
-                    f"Add {_WORD_COUNT_MIN - actual_word_count}+ words of substantive content: "
-                    "new H2 sections, research citations, examples, or deeper analysis."
-                )
-            if revision.confidence_score < _DRAFT_THRESHOLD:
-                issues.append(
-                    f"Confidence score is {revision.confidence_score} — minimum is {_DRAFT_THRESHOLD}. "
-                    f"SEO checks passed: {revision.seo_checks_passed}/15. "
-                    "Fix all failing checks and improve content quality."
-                )
-            if not issues:
-                break
-
+        # 7. If word count is too low, expand the content (add new sections, don't rewrite)
+        if actual_word_count < _WORD_COUNT_TARGET:
             logger.info(
-                "[supervisor] revision round %d/%d — %s",
-                revision_round, _MAX_REVISION_ROUNDS,
-                "; ".join(issues),
+                "[supervisor] expanding content: %d → %d words needed",
+                actual_word_count, _WORD_COUNT_TARGET,
             )
+            expanded_html = _with_retry(lambda: expand_content(
+                content=revision.content,
+                title=revision.title,
+                focus_keyphrase=draft.focus_keyphrase,
+                current_word_count=actual_word_count,
+                target_word_count=_WORD_COUNT_TARGET,
+            ))
+            actual_word_count = _count_words(expanded_html)
+            logger.info("[supervisor] expanded to %d words", actual_word_count)
 
-            # Feed the revision output back as a new draft for another pass
-            feedback_draft = ContentDraft(
+            # 8. Final revision pass on the expanded content — re-audit SEO
+            expanded_draft = ContentDraft(
                 title=revision.title,
                 excerpt=revision.excerpt,
-                content=revision.content,
+                content=expanded_html,
                 tags=revision.tags,
                 focus_keyphrase=draft.focus_keyphrase,
                 structure_used=draft.structure_used,
                 word_count=actual_word_count,
             )
-            revision = _with_retry(lambda: run_revision_agent(feedback_draft))
+            revision = _with_retry(lambda: run_revision_agent(expanded_draft))
             actual_word_count = _count_words(revision.content)
+            logger.info("[supervisor] revision pass 2: %d words, confidence %d", actual_word_count, revision.confidence_score)
 
-        # 7. After all revision rounds, hold if still not good enough
+        # 9. Hold only if still below hard minimum after expansion
         if actual_word_count < _WORD_COUNT_MIN or revision.confidence_score < _DRAFT_THRESHOLD:
             reason_parts: list[str] = []
             if actual_word_count < _WORD_COUNT_MIN:
@@ -143,7 +138,7 @@ def run_pipeline() -> PipelineResult:
                 status="held",
                 confidence_score=revision.confidence_score,
                 seo_checks_passed=revision.seo_checks_passed,
-                revision_notes=f"[{reason} after {_MAX_REVISION_ROUNDS} rounds] {revision.revision_notes}",
+                revision_notes=f"[{reason}] {revision.revision_notes}",
                 error_message=None,
             )
             return PipelineResult(
@@ -154,18 +149,18 @@ def run_pipeline() -> PipelineResult:
                 revision_notes=revision.revision_notes,
             )
 
-        # 9. Generate + upload cover image
+        # 10. Generate + upload cover image
         cover_image_url: str = _with_retry(
             lambda: run_image_agent(revision.title, revision.excerpt)
         )
 
-        # 10. Validate payload
+        # 11. Validate payload
         _validate_payload(revision, cover_image_url)
 
-        # 11. Determine publish mode
+        # 12. Determine publish mode
         published = revision.confidence_score >= _AUTO_PUBLISH_THRESHOLD
 
-        # 12. POST to blog API
+        # 13. POST to blog API
         post = _with_retry(lambda: create_post(
             title=revision.title,
             excerpt=revision.excerpt,
